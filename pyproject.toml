@@ -22,6 +22,8 @@ dependencies = [
     "botocore",
     "requests",
     "tqdm",
+    "aioboto3",
+    "aiohttp",
 ]
 
 [tool.setuptools.packages.find]
