@@ -56,6 +56,7 @@ async def _find_latest_http_single_async(row, root_url, release, session, semaph
     """Asynchronously find the latest HTTP URI for a single row."""
     async with semaphore:
         plan_url = f"{root_url.rstrip('/')}/{release}/level2/{row['plan']}/"
+
         try:
             async with session.get(plan_url) as response:
                 if response.status != 200:
@@ -64,8 +65,22 @@ async def _find_latest_http_single_async(row, root_url, release, session, semaph
         except Exception:
             return None
 
-        pipe_vers = sorted(re.findall(r'href="([^/]+)/"', text), reverse=True)
+        # Find pipeline versions (starting with l2b-v) from hrefs or the text listing
+        pipe_vers = set()
+        
+        # Method 1: href links
+        hrefs = re.findall(r"href=['\"]?([^'\"\s>]+)['\"]?", text)
+        for href in hrefs:
+            name = href.rstrip('/').split('/')[-1]
+            if name.startswith('l2b-v'):
+                pipe_vers.add(name)
+        
+        # Method 2: Text listing (for servers that might not link every entry in a <pre> block)
+        names = re.findall(r'(l2b-v[\w-]+)', text)
+        for name in names:
+            pipe_vers.add(name)
 
+        pipe_vers = sorted(list(pipe_vers), reverse=True)
         for pipe_ver in pipe_vers:
             file_url = f"{plan_url}{pipe_ver}/{row['band']}/level2_{row['plan']}_{row['root']}_spx_{pipe_ver}.fits"
             try:
