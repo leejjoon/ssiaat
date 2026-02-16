@@ -72,7 +72,10 @@ async def _find_latest_single_async(row, fs, root_path, release, semaphore, http
                 pipe_vers.sort(reverse=True)
             for pipe_ver in pipe_vers:
                 # Based on the confirmed structure: {plan}/{pipe_ver}/{band}/{filename}
-                file_path = f"{plan_dir}{pipe_ver}/{row['band']}/{row['filename']}"
+                # Use the pipe_ver to reconstruct the filename
+                base_filename = row['filename'].rsplit('_', 1)[0]
+                new_filename = f"{base_filename}_{pipe_ver}.fits"
+                file_path = f"{plan_dir}{pipe_ver}/{row['band']}/{new_filename}"
                 if hasattr(fs, '_exists'):
                     exists = await fs._exists(file_path)
                 else:
