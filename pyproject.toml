@@ -24,6 +24,8 @@ dependencies = [
     "tqdm",
     "aioboto3",
     "aiohttp",
+    "fsspec",
+    "s3fs",
 ]
 
 [tool.setuptools.packages.find]
