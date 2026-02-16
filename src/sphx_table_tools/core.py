@@ -12,25 +12,37 @@ import aiohttp
 MAX_CONCURRENT_TASKS = 20
 
 def _get_table_from_filenames(filenames):
-    """Parse filenames into a DataFrame with plan, band, and root components."""
+    """Parse filenames into a DataFrame with plan, pointing, step, band, and pipeline_run components."""
     unique_filenames = pd.Series(filenames)
-    _root = unique_filenames.str.split("_spx_").str[0]
+    # Example: level2_2025W48_1A_0516_2D6_spx_l2b-v20-2025-335.fits
+    _root = unique_filenames.str.split(".fits").str[0]
     split = _root.str.split("_")
+    
     plan = split.apply(lambda s: f"{s[1]}_{s[2]}")
-    # Extract the band component (e.g., '1D1', '2D1')
-    band = split.apply(lambda s: s[4])
-    root = split.apply(lambda s: f"{s[3]}_{s[4]}")
-    return pd.DataFrame(dict(filename=unique_filenames, plan=plan, band=band, root=root))
+    pointing = split.apply(lambda s: s[3])
+    # split[4] is e.g. '2D6'
+    step = split.apply(lambda s: s[4][0])
+    band = split.apply(lambda s: s[4][-1])
+    pipeline_run = split.apply(lambda s: s[6])
+    
+    return pd.DataFrame(dict(
+        filename=unique_filenames, 
+        plan=plan, 
+        pointing=pointing, 
+        step=step, 
+        band=band, 
+        pipeline_run=pipeline_run
+    ))
 
 async def _find_latest_single_async(row, fs, root_path, release, semaphore, http_session=None):
     """Asynchronously find the latest URI for a single row using fsspec/aiohttp."""
     async with semaphore:
+        # Use plan from the row (parsed directly from filename)
         plan_dir = f"{root_path.rstrip('/')}/{release}/level2/{row['plan']}/"
         
         try:
             protocols = fs.protocol if isinstance(fs.protocol, (list, tuple)) else [fs.protocol]
             if any(p in ['http', 'https'] for p in protocols):
-                # Use aiohttp directly for robust directory listing
                 async with http_session.get(plan_dir) as response:
                     if response.status != 200:
                         return None
@@ -58,13 +70,9 @@ async def _find_latest_single_async(row, fs, root_path, release, semaphore, http
                     if name.startswith('l2b-v'):
                         pipe_vers.append(name)
                 pipe_vers.sort(reverse=True)
-
-            # The subdirectory name is the last character of the band string (e.g. '1' from '2D1')
-            band_sub = row['band'][-1]
-
             for pipe_ver in pipe_vers:
-                file_path = f"{plan_dir}{pipe_ver}/{band_sub}/level2_{row['plan']}_{row['root']}_spx_{pipe_ver}.fits"
-                
+                # Based on the confirmed structure: {plan}/{pipe_ver}/{band}/{filename}
+                file_path = f"{plan_dir}{pipe_ver}/{row['band']}/{row['filename']}"
                 if hasattr(fs, '_exists'):
                     exists = await fs._exists(file_path)
                 else:
@@ -73,7 +81,7 @@ async def _find_latest_single_async(row, fs, root_path, release, semaphore, http
                 if exists:
                     return file_path
         except Exception:
-            pass
+            raise
     return None
 
 async def find_latest_uri_async(filenames, root_uri, release="qr2", progress: bool = False, 
