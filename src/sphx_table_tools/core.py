@@ -1,3 +1,17 @@
+"""
+Core utilities for SPHEREx table tools.
+
+This module provides functionality to find the latest version of data files 
+within a structured storage system (S3, HTTP, or local). 
+
+The logic for finding the latest file follows these steps:
+1. Parse input filenames to extract components like 'plan', 'pointing', and 'band'.
+2. List directories in the storage root (e.g., '{root}/{release}/level2/{plan}/') 
+   to identify available pipeline versions ('l2b-v*').
+3. Sort these versions in descending order (latest first).
+4. For each version, reconstruct the expected filename and check for its existence.
+5. Return the URI of the first (latest) existing file found.
+"""
 import pandas as pd
 from urllib.parse import urlparse
 import os
@@ -12,7 +26,17 @@ import aiohttp
 MAX_CONCURRENT_TASKS = 20
 
 def _get_table_from_filenames(filenames):
-    """Parse filenames into a DataFrame with plan, pointing, step, band, and pipeline_run components."""
+    """
+    Parse filenames into a DataFrame with plan, pointing, step, band, and pipeline_run components.
+
+    Example filename: level2_2025W48_1A_0516_2D6_spx_l2b-v20-2025-335.fits
+    Parsing logic:
+    - plan: '2025W48_1A' (from indices 1 and 2)
+    - pointing: '0516' (from index 3)
+    - step: '2' (first char of index 4 '2D6')
+    - band: '6' (last char of index 4 '2D6')
+    - pipeline_run: 'l2b-v20-2025-335' (from index 6)
+    """
     unique_filenames = pd.Series(filenames)
     # Example: level2_2025W48_1A_0516_2D6_spx_l2b-v20-2025-335.fits
     _root = unique_filenames.str.split(".fits").str[0]
