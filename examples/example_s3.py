@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 import time
-from sphx_table_tools.core import find_latest_uri
+from ssiaat.core import find_latest_uri
 
 def main():
     # 1. Read the ECSV file using pandas
