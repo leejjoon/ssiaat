@@ -4,7 +4,7 @@ import aiohttp
 import re
 import fsspec
 from fsspec.core import url_to_fs
-from ssiaat.core import _get_table_from_filenames, _find_latest_single_async
+from ssiaat.finder import _get_table_from_filenames, _find_latest_single_async
 
 async def test_single_file():
     # Testing the second unique filename (Row 3 in ECSV)

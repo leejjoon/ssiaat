@@ -1,5 +1,5 @@
 """
-Core utilities for SPHEREx table tools.
+Finder utilities for SPHEREx table tools.
 
 This module provides functionality to find the latest version of data files 
 within a structured storage system (S3, HTTP, or local). 
