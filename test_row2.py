@@ -24,10 +24,10 @@ async def test_single_file():
     fs, root_path = url_to_fs(root_uri, asynchronous=True, **uri_option)
     semaphore = asyncio.Semaphore(1)
     
-    async with aiohttp.ClientSession() as session:
-        # Now run the actual logic
-        result = await _find_latest_single_async(row, fs, root_path, release, semaphore, http_session=session)
-        print(f"\nResult from _find_latest_single_async: {result}")
+    #async with aiohttp.ClientSession() as session:
+    #    # Now run the actual logic
+    result = await _find_latest_single_async(row, fs, root_path, release, semaphore)
+    print(f"\nResult from _find_latest_single_async: {result}")
 
 if __name__ == "__main__":
     asyncio.run(test_single_file())

@@ -21,6 +21,10 @@ from tqdm.asyncio import tqdm
 import fsspec
 from fsspec.core import url_to_fs
 import aiohttp
+from .fs import register_fs
+
+# Register custom filesystems
+register_fs()
 
 # Default concurrency limit
 MAX_CONCURRENT_TASKS = 20
@@ -58,57 +62,41 @@ def _get_table_from_filenames(filenames):
         pipeline_run=pipeline_run
     ))
 
-async def _find_latest_single_async(row, fs, root_path, release, semaphore, http_session=None):
-    """Asynchronously find the latest URI for a single row using fsspec/aiohttp."""
+async def _find_latest_single_async(row, fs, root_path, release, semaphore):
+    """Asynchronously find the latest URI for a single row using fsspec."""
     async with semaphore:
         # Use plan from the row (parsed directly from filename)
         plan_dir = f"{root_path.rstrip('/')}/{release}/level2/{row['plan']}/"
         
         try:
-            protocols = fs.protocol if isinstance(fs.protocol, (list, tuple)) else [fs.protocol]
-            if any(p in ['http', 'https'] for p in protocols):
-                async with http_session.get(plan_dir) as response:
-                    if response.status != 200:
-                        return None
-                    text = await response.text()
-                
-                pipe_vers = set()
-                hrefs = re.findall(r"href=['\"]?([^'\"\s>]+)['\"]?", text)
-                for href in hrefs:
-                    name = href.rstrip('/').split('/')[-1]
-                    if name.startswith('l2b-v'):
-                        pipe_vers.add(name)
-                names = re.findall(r'(l2b-v[\w-]+)', text)
-                for name in names:
-                    pipe_vers.add(name)
-                pipe_vers = sorted(list(pipe_vers), reverse=True)
+            if hasattr(fs, '_ls'):
+                items = await fs._ls(plan_dir, detail=False)
             else:
-                if hasattr(fs, '_ls'):
-                    items = await fs._ls(plan_dir, detail=False)
-                else:
-                    items = fs.ls(plan_dir, detail=False)
-                
-                pipe_vers = []
-                for item in items:
-                    name = item.rstrip('/').split('/')[-1]
-                    if name.startswith('l2b-v'):
-                        pipe_vers.append(name)
-                pipe_vers.sort(reverse=True)
+                items = await asyncio.to_thread(fs.ls, plan_dir, detail=False)
+            
+            pipe_vers = []
+            for item in items:
+                name = item.rstrip('/').split('/')[-1]
+                if name.startswith('l2b-v'):
+                    pipe_vers.append(name)
+            pipe_vers.sort(reverse=True)
+
             for pipe_ver in pipe_vers:
                 # Based on the confirmed structure: {plan}/{pipe_ver}/{band}/{filename}
                 # Use the pipe_ver to reconstruct the filename
                 base_filename = row['filename'].rsplit('_', 1)[0]
                 new_filename = f"{base_filename}_{pipe_ver}.fits"
                 file_path = f"{plan_dir}{pipe_ver}/{row['band']}/{new_filename}"
+                
                 if hasattr(fs, '_exists'):
                     exists = await fs._exists(file_path)
                 else:
-                    exists = fs.exists(file_path)
+                    exists = await asyncio.to_thread(fs.exists, file_path)
                 
                 if exists:
                     return file_path
         except Exception:
-            raise
+            return None
     return None
 
 async def find_latest_uri_async(filenames, root_uri, release="qr2", progress: bool = False, 
@@ -122,15 +110,14 @@ async def find_latest_uri_async(filenames, root_uri, release="qr2", progress: bo
     
     semaphore = asyncio.Semaphore(max_concurrency)
     
-    async with aiohttp.ClientSession() as http_session:
-        tasks = [
-            _find_latest_single_async(row, fs, root_path, release, semaphore, http_session=http_session) 
-            for _, row in df.iterrows()
-        ]
-        if progress:
-            results = await tqdm.gather(*tasks, desc=f"Checking {fs.protocol}")
-        else:
-            results = await asyncio.gather(*tasks)
+    tasks = [
+        _find_latest_single_async(row, fs, root_path, release, semaphore) 
+        for _, row in df.iterrows()
+    ]
+    if progress:
+        results = await tqdm.gather(*tasks, desc=f"Checking {fs.protocol}")
+    else:
+        results = await asyncio.gather(*tasks)
             
     return pd.Series(results, index=df.index)
 
