@@ -17,6 +17,8 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
+    "astropy",
+    "reproject",
     "pandas",
     "boto3",
     "botocore",
