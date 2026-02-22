@@ -26,6 +26,14 @@ from spherex_tabular_bandpass import Tabular_Bandpass
 from .flags import get_flagval, DEFAULT_FLAGS
 # DEFAULT_FLAGS: tuple[str, ...] = ("ALL", "-FULLSAMPLE", "-SOURCE")
 
+def get_metadata_from_filename(fn):
+    from pathlib import Path
+    fn = Path(fn)
+    pipe_run = fn.name.split(".")[0].split("_spx_")[-1]
+
+    return dict(pipe_run=pipe_run)
+
+
 def ingest_hdul(hdulist: fits.HDUList, *,
                 flags: Iterable[str] = DEFAULT_FLAGS,
                 process_variance: bool = True) -> bool | list:
@@ -158,18 +166,25 @@ class SphxReprojector:
 
         return src_y, src_x
 
-    def __init__(self, input_hdul, band,
-                 flags=None):
+    def __init__(self, input_hdul, *,
+                 flags=None, aux_metadata=None):
         # self.PROJNAME = PROJNAME
         # self.plan = plan
         # self.root = root
-        self.band = int(band)
 
-        # # self.frame_name
-        # if frame_name == "galactic":
-        #     self.frame = Galactic()
-        # else:
-        #     raise ValueError()
+
+        self.metadata = dict()
+
+        header = input_hdul[1].header
+
+        self.metadata["expidn"] = header["EXPIDN"]
+        self.band = self.metadata["band"] = header["DETECTOR"]
+
+        if aux_metadata is not None:
+            for k in self.metadata:
+                if k in aux_metadata:
+                    raise ValueError(f"aux_metadata should not contain '{k}' key.")
+            self.metadata.update(aux_metadata)
 
         self.flags = DEFAULT_FLAGS if flags is None else flags
         nddata_list = ingest_hdul(input_hdul, flags=self.flags, process_variance=True)
@@ -234,7 +249,6 @@ class SphxReprojector:
                                               )
         ind_out[footprint == 0] = -1
 
-
         out_header = wcs_tmpl.to_header()
         out_hdul = fits.HDUList(
             [fits.PrimaryHDU(data=array_out[0], header=out_header),
@@ -285,16 +299,19 @@ class SphxReprojector:
             src_x=src_x,
             src_y=src_y,
             wvl=wvl,
+            **self.metadata
         ))
 
         return df
 
+
 def main():
     fn = "level2_2025W24_1A_0405_2D1_spx_l2b-v19-2025-252.fits"
     hdul = fits.open(fn)
-    band = 1
 
-    reprojector = SphxReprojector(hdul, band)
+    aux_metadata = get_metadata_from_filename(fn)
+
+    reprojector = SphxReprojector(hdul, aux_metadata=aux_metadata)
 
     header = fits.open("eso_244_template.fits")[0].header
     output_wcs_tmpl = WCS(header)
@@ -302,31 +319,7 @@ def main():
     df = reprojector.hdul_to_pandas(out_hdul)
     #out_hdul.writeto("a.fits", overwrite=True)
     df.to_parquet("a.parquet")
+    print(df.columns)
 
 if __name__ == '__main__':
     main()
-# def process_local(projname, plan, root, band, sphx_name, s3uri, level, tile_size, hid_list, frame_name="galactic"):
-#     mark1 = time.perf_counter()
-
-#     hdul = fits.open(s3uri)
-#     # hdul = fits.open(s3uri, use_fsspec=True, fsspec_kwargs={"anon": True})
-
-#     mark2 = time.perf_counter()
-#     print("time spent 1:", mark2 - mark1)
-
-#     shp = SphxReprojector(projname, plan, root, band, hdul, frame_name=frame_name)
-
-#     processed_intermediate = shp.process_hid_list(level, tile_size, hid_list)
-
-#     mark3 = time.perf_counter()
-
-#     print("time spent 2:", mark3 - mark2)
-
-#     processed = shp.finalize_all_local(level, tile_size, processed_intermediate)
-
-#     mark4 = time.perf_counter()
-#     print("time spent 3:", mark4 - mark3)
-
-#     # time.sleep(1)
-
-#     return processed
