@@ -83,10 +83,27 @@ class ImageTable:
         self._ssiaat_converter = ssiaat_converter
 
 
-class Image:
-    def __init__(self, image: np.ndarray, ssiaat_converter=None):
-        self.image = image
-        self._ssiaat_converter = ssiaat_converter
+class Image(np.ndarray):
+    def __new__(cls, input_array, ssiaat_converter=None):
+        # We cast the input to an ndarray and then into our subclass view
+        obj = np.asarray(input_array).view(cls)
+        # Add the custom metadata
+        obj._ssiaat_converter = ssiaat_converter
+        return obj
+
+    def __array_finalize__(self, obj):
+        # Called when:
+        # 1. Explicitly created: Image(...) -> obj is None
+        # 2. View casting: arr.view(Image) -> obj is arr
+        # 3. Slicing: img[1:2] -> obj is img
+        if obj is None: return
+        self._ssiaat_converter = getattr(obj, '_ssiaat_converter', None)
+
+    def to_itable(self):
+        """Converts the image back to an ImageTable using its converter."""
+        if self._ssiaat_converter is None:
+            raise ValueError("No ssiaat_converter attached to this Image.")
+        return self._ssiaat_converter.image_to_itable(self)
 
 
 class SsiaatConverter:
@@ -299,7 +316,7 @@ def main():
     itable = ImageTable(pd.Series(C[:, 1], index=idx))
     im = ssiaat_converter.itable_to_image(itable) #, # pd.Series(C[:, 1], index=idx),
                                           # ignore_index_name=True)
-    fits.PrimaryHDU(data=im.image).writeto("b.fits", overwrite=True)
+    fits.PrimaryHDU(data=im).writeto("b.fits", overwrite=True)
 
 if __name__ == '__main__':
     main()
