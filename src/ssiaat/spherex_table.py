@@ -39,48 +39,31 @@ def check_index_itable(df):
     return is_integer_dtype(df.index.dtype) and not df.index.has_duplicates
 
 
+@pd.api.extensions.register_dataframe_accessor("spectral")
 class SpectralTable:
-    def __init__(self, df, ssiaat_converter=None, ignore_index_check=False):
-        if not ignore_index_check and not check_index_stable(df):
-            raise ValueError("The input dataframe's index is no of integer of do"
-                             " not have duplicates which is unusual. If you are sure"
-                             "with the input, set `ignore_index_check` to True.")
+    def __init__(self, pandas_obj):
+        self._obj = pandas_obj
 
-        self.df = df
-
-        self._ssiaat_converter = ssiaat_converter
-
-    # @functools.cached_property
-    # def _df_groupby(self):
-    #     return self._df.groupby(by=self._df.index)
-    #     #"tmpl_ind"
-
-    @classmethod
-    def read_parquet(cls, *fnlist, index_column="tmpl_ind", ssiaat_converter=None):
-        dfl = [pd.read_parquet(fn) for fn in fnlist]
-        df = pd.concat(dfl, axis=0).set_index(index_column)
-        return cls(df, ssiaat_converter)
+    @property
+    def converter(self):
+        return getattr(self._obj, "_ssiaat_converter", None)
 
     def make_simple_image(self, w1, w2):
-        dfc = self.df.query(f"({w1} < wvl) and (wvl < {w2})")
-        # ggc = dfc.groupby("tmpl_ind")
-
+        dfc = self._obj.query(f"({w1} < wvl) and (wvl < {w2})")
         s = dfc.groupby(by=dfc.index)["image"].mean()
-        itable = ImageTable(s)
-        return self._ssiaat_converter.itable_to_image(itable)
-        # smeanR = s.reindex(tmpl_ind.flat).array.reshape(tmpl_ind.shape)
+        # Propagate converter to the resulting series
+        s._ssiaat_converter = self.converter
+        return self.converter.itable_to_image(s)
 
 
+@pd.api.extensions.register_series_accessor("itable")
 class ImageTable:
-    def __init__(self, df, ssiaat_converter=None, ignore_index_check=False):
-        if not ignore_index_check and not check_index_itable(df):
-            raise ValueError("The input dataframe's index is no of integer of do"
-                             " not have duplicates which is unusual. If you are sure"
-                             "with the input, set `ignore_index_check` to True.")
+    def __init__(self, pandas_obj):
+        self._obj = pandas_obj
 
-        self.df = df
-
-        self._ssiaat_converter = ssiaat_converter
+    @property
+    def converter(self):
+        return getattr(self._obj, "_ssiaat_converter", None)
 
 
 class Image(np.ndarray):
@@ -118,11 +101,9 @@ class SsiaatConverter:
                                axis=0, dtype="int32")
         self.tmpl_ind_flat = np.ravel(self.tmpl_ind)
 
-    def itable_to_image(self, itable: ImageTable, ignore_index_name=False):
-        # s should be a series whose index is a subset of tmpl_ind.
-        # if not ignore_index_name and itable.index.name != "tmpl_ind":
-        #     raise ValueError("input needs to have an index named 'tmpl_ind' unless 'ignore_index_name' is True")
-        im_ = itable.df.reindex(self.tmpl_ind_flat).array.reshape(self.tmpl_shape)
+    def itable_to_image(self, itable: pd.Series, ignore_index_name=False):
+        # itable should be a series whose index is a subset of tmpl_ind.
+        im_ = itable.reindex(self.tmpl_ind_flat).array.reshape(self.tmpl_shape)
         im = Image(im_, ssiaat_converter=self)
         return im
 
@@ -130,9 +111,15 @@ class SsiaatConverter:
         itable = pd.Series(np.ravel(image), index=self.tmpl_ind)
         return itable
 
-    def read_stable(self, *fnlist, index_column="tmpl_ind"):
-        return SpectralTable.read_parquet(*fnlist, index_column="tmpl_ind",
-                                          ssiaat_converter=self)
+    def read_stable(self, *fnlist, index_column="tmpl_ind", ignore_index_check=False):
+        dfl = [pd.read_parquet(fn) for fn in fnlist]
+        df = pd.concat(dfl, axis=0).set_index(index_column)
+        if not ignore_index_check and not check_index_stable(df):
+             raise ValueError("The input dataframe's index is no of integer of do"
+                             " not have duplicates which is unusual. If you are sure"
+                             "with the input, set `ignore_index_check` to True.")
+        df._ssiaat_converter = self
+        return df
 
 
 # class TableToImage:
@@ -234,7 +221,7 @@ class Model:
         return f"cmodel{i}"
 
     def _populate_table_with_model_eval(self, stable, inplace=False):
-        df = stable.df
+        df = stable # stable is now a DataFrame
         k = {}
         for mid, m in chain(zip(self.model_names, self.models),
                             zip(self.cont_model_names, self.cont_models)):
@@ -305,7 +292,7 @@ def main():
 
     stable = ssiaat_converter.read_stable(*fnlist)
 
-    im = stable.make_simple_image(3.1, 4.0)
+    im = stable.spectral.make_simple_image(3.1, 4.0)
     # fits.PrimaryHDU(data=im).writeto("a.fits", overwrite=True)
 
     spectral_model = get_test_model()
@@ -313,10 +300,12 @@ def main():
     df = spectral_model._populate_table_with_model_eval(stable)
     C, idx = spectral_model._least_square_fit(df)
 
-    itable = ImageTable(pd.Series(C[:, 1], index=idx))
+    itable = pd.Series(C[:, 1], index=idx)
+    itable._ssiaat_converter = ssiaat_converter
     im = ssiaat_converter.itable_to_image(itable) #, # pd.Series(C[:, 1], index=idx),
                                           # ignore_index_name=True)
     fits.PrimaryHDU(data=im).writeto("b.fits", overwrite=True)
+
 
 if __name__ == '__main__':
     main()
