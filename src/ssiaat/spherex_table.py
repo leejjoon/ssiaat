@@ -74,6 +74,8 @@ def check_index_itable(df):
 @pd.api.extensions.register_dataframe_accessor("spectral")
 class SpectralTable:
     def __init__(self, pandas_obj):
+        if not check_index_stable(pandas_obj):
+            raise AttributeError("Spectral accessor only available for DataFrames with integer index and duplicates.")
         self._obj = pandas_obj
 
     @property
@@ -107,6 +109,8 @@ class SpectralTable:
 @pd.api.extensions.register_series_accessor("itable")
 class ImageTable:
     def __init__(self, pandas_obj):
+        if not check_index_itable(pandas_obj):
+            raise AttributeError("ImageTable accessor only available for Series with unique integer index.")
         self._obj = pandas_obj
 
     @property
@@ -126,6 +130,10 @@ class ImageTable:
             except Exception: pass
             return conv
         return None
+
+    def to_image(self):
+        """Converts the image back to its tabular form using its converter."""
+        return self.converter.itable_to_image(self._obj)
 
 
 class Image(np.ndarray):
@@ -281,13 +289,19 @@ from itertools import chain
 from vectorized_lstsq import vectorized_lstsq_numpy
 
 class FitResults:
-    def __init__(self, idx, C, Cerr=None, *, model=None):
+    def __init__(self, idx, C, Cerr=None, *, model=None,
+                 ssiaat_template_header=None):
         self.idx = idx
         self._C = C
         # Store coefficients as Series to leverage pandas index alignment
         self.C = [pd.Series(C[:, i], index=idx) for i in range(len(model.model_names))]
         self.contC = [pd.Series(C[:, i], index=idx) for i in range(len(model.model_names),
                                              len(model.all_model_names))]
+
+        if ssiaat_template_header is not None:
+            for s in chain(self.C, self.contC):
+                s.attrs["ssiaat_template_header"] = ssiaat_template_header
+
         self._Cerr = Cerr
         self.model = model
 
@@ -358,7 +372,9 @@ class Model:
         idx_C_Cerr = self._least_square_fit(df,
                                             variance_column=variance_column,
                                             return_error=return_error)
-        return FitResults(*idx_C_Cerr, model=self)
+        ssiaat_template_header = stable.attrs.get("ssiaat_template_header", None)
+        return FitResults(*idx_C_Cerr, model=self,
+                          ssiaat_template_header=ssiaat_template_header)
 
 # %%
 # template_file = "template_gal_cyg_x.fits"
@@ -442,7 +458,7 @@ def main():
 
     print(fitted_model.C[0])
     itable = fitted_model.contC[1]
-    im = stable.spectral.converter.itable_to_image(itable) #, # pd.Series(C[:, 1], index=idx),
+    im = itable.itable.to_image() #, # pd.Series(C[:, 1], index=idx),
                                           # ignore_index_name=True)
     # fits.PrimaryHDU(data=im).writeto("b.fits", overwrite=True)
 
@@ -455,12 +471,11 @@ def main():
     s = stable.spectral.filter_with_image_mask(msk)
 
     param_i = 0
-    imsk = stable.spectral.converter.image_to_itable(msk)
+    imsk = converter.image_to_itable(msk)
     c0 = fitted_model.C[0]
     c1 = fitted_model.C[1]
 
     ss_contsub = fitted_model.cont_sub(s["wvl"], s["image"])
-    assert np.all(s.index.values == ss_contsub.index.values)
 
     # ss_contsub_n_normed = fitted_model.norm(s["wvl"], ss_contsub, param_i)
 
