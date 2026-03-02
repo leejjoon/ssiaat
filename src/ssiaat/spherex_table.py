@@ -1,15 +1,47 @@
-#
-
 """
-OriginalSpectralImage (original)
+SSIAAT Table and Image handling.
 
-SpectralImage (reprojected)
+This module provides specialized classes for handling SPHEREx spectral data in tabular 
+and image formats. It integrates closely with NumPy and Pandas using modern 
+extension patterns.
 
-SpectralTable (stable) : reprojected spectral images as a table. should have a column of tmpl_ind. There can be multiple rows of same tmpl_ind value.
+Core Components:
+---------------
+1. Image (np.ndarray subclass):
+   A 2D NumPy array that carries an attached `_ssiaat_converter`.
+   It behaves exactly like a NumPy array (slicing, math, etc.) but can be 
+   converted back to a table format using `.to_itable()`.
 
-ImageTable (itable) : image as table. should have a index of tmpl_ind that maps to a unique pixel in the template image. The index of tmpl_ind should be uniquely valued.
+2. SpectralTable (pd.DataFrame accessor: .spectral):
+   Adds spectral analysis methods to standard Pandas DataFrames.
+   Example: `df.spectral.make_simple_image(3.1, 4.0)`
 
-Image (image) : image ()in reprojected template.)
+3. ImageTable (pd.Series accessor: .itable):
+   Adds image-table mapping methods to standard Pandas Series (where the index 
+   represents pixel indices).
+
+4. SsiaatConverter:
+   The core bridge between spatial (Image) and tabular (DataFrame/Series) formats.
+   It handles reprojection and indexing.
+
+Usage Example:
+--------------
+    converter = SsiaatConverter("template.fits")
+    
+    # Load data into a standard DataFrame with spectral powers
+    df = converter.read_stable("data.parquet")
+    
+    # Use the .spectral accessor to create an Image object
+    img = df.spectral.make_simple_image(3.2, 3.4)
+    
+    # 'img' is an ndarray, so you can plot it or do math directly
+    import matplotlib.pyplot as plt
+    plt.imshow(img)
+    img_multiplied = img * 2
+    
+    # Metadata is preserved during slicing
+    sliced_img = img[10:20, 10:20]
+    print(sliced_img._ssiaat_converter) 
 
 """
 
@@ -55,6 +87,9 @@ class SpectralTable:
         s._ssiaat_converter = self.converter
         return self.converter.itable_to_image(s)
 
+    def filter_with_image_mask(self, msk):
+        itable = self.converter.image_to_itable(msk)
+        return self._obj.loc[itable]
 
 @pd.api.extensions.register_series_accessor("itable")
 class ImageTable:
@@ -108,7 +143,7 @@ class SsiaatConverter:
         return im
 
     def image_to_itable(self, image: Image | np.ndarray):
-        itable = pd.Series(np.ravel(image), index=self.tmpl_ind)
+        itable = pd.Series(np.ravel(image), index=self.tmpl_ind_flat)
         return itable
 
     def read_stable(self, *fnlist, index_column="tmpl_ind", ignore_index_check=False):
@@ -118,8 +153,13 @@ class SsiaatConverter:
              raise ValueError("The input dataframe's index is no of integer of do"
                              " not have duplicates which is unusual. If you are sure"
                              "with the input, set `ignore_index_check` to True.")
+
         df._ssiaat_converter = self
         return df
+
+
+def read_stable(*fnlist, tmpl_name="", index_column="tmpl_ind"):
+    pass
 
 
 # class TableToImage:
@@ -202,6 +242,28 @@ class BandpassTool:
 from itertools import chain
 from vectorized_lstsq import vectorized_lstsq_numpy
 
+class FitResults:
+    def __init__(self, idx, C, Cerr=None, *, model=None):
+        self.idx = idx
+        self._C = C
+        self.C = [C[:, i] for i in range(len(model.model_names))]
+        self.contC = [C[:, i] for i in range(len(model.model_names),
+                                             len(model.all_model_names))]
+        self._Cerr = Cerr
+        self.model = model
+
+    def cont_sub(self, wvl, spec):
+        # wvl = stable["wvl"]
+        cont_amps = [wvl.align(pd.Series(c, index=self.idx), join="left")[1] for c
+                     in self.contC]
+        cont = np.sum([a*m(wvl) for a, m in zip(cont_amps, self.model.cont_models)], axis=0)
+        return spec - pd.Series(cont, index=wvl.index)
+
+    def norm(self, wvl, spec, param_i):
+        norm = wvl.align(pd.Series(self.C[param_i], index=self.idx), join="left")[1]
+        return spec / norm
+
+
 class Model:
     """
     linear combination of models.
@@ -244,14 +306,20 @@ class Model:
     def _least_square_fit(self, df, variance_column="variance", return_error=False):
         if return_error:
             C, C_err, idx = vectorized_lstsq_numpy(df, self.all_model_names, variance_column=variance_column, return_error=True)
-            return C, C_err, idx
+            return idx, C, C_err
         else:
             C, idx = vectorized_lstsq_numpy(df, self.all_model_names,
                                             variance_column=variance_column,
                                             return_error=False)
-            return C, idx
+            return idx, C
 
+    def least_square_fit(self, stable, variance_column="variance", return_error=False):
+        df = self._populate_table_with_model_eval(stable)
 
+        idx_C_Cerr = self._least_square_fit(df,
+                                            variance_column=variance_column,
+                                            return_error=return_error)
+        return FitResults(*idx_C_Cerr, model=self)
 
 # %%
 # template_file = "template_gal_cyg_x.fits"
@@ -280,6 +348,7 @@ def get_test_model():
 
     return spectral_model
 
+
 def main():
     root = "eso_244"
     template_name = f"{root}_template.fits"
@@ -288,24 +357,61 @@ def main():
     from pathlib import Path
     datadir = Path(".")
 
-    fnlist = [str(datadir / f"{root}_b{band}.parquet") for band in [3, 4]]
+    fnlist = [str(datadir / f"{root}_b{band}.parquet") for band in [3, 4, 5]]
 
-    stable = ssiaat_converter.read_stable(*fnlist)
+    stable_ = ssiaat_converter.read_stable(*fnlist)
+    stable = stable_.query("(2.6 < wvl) and (wvl < 4.0)")
+    stable._ssiaat_converter = stable_._ssiaat_converter
 
     im = stable.spectral.make_simple_image(3.1, 4.0)
     # fits.PrimaryHDU(data=im).writeto("a.fits", overwrite=True)
 
     spectral_model = get_test_model()
 
-    df = spectral_model._populate_table_with_model_eval(stable)
-    C, idx = spectral_model._least_square_fit(df)
+    # df = spectral_model._populate_table_with_model_eval(stable)
+    # C, idx = spectral_model._least_square_fit(df)
+    fitted_model = spectral_model.least_square_fit(stable)
 
-    itable = pd.Series(C[:, 1], index=idx)
+    print(fitted_model.C[0])
+    itable = pd.Series(fitted_model.contC[1], index=fitted_model.idx)
     itable._ssiaat_converter = ssiaat_converter
     im = ssiaat_converter.itable_to_image(itable) #, # pd.Series(C[:, 1], index=idx),
                                           # ignore_index_name=True)
     fits.PrimaryHDU(data=im).writeto("b.fits", overwrite=True)
 
+    # spatial filtering
+    sreg = "image;ellipse(31.403764,28.577416,4.3068155,8.0752791,353.88636)"
+    import pyregion
+    reg = pyregion.parse(sreg)
+    msk = reg.get_mask(shape=(61, 61))
+
+    s = stable.spectral.filter_with_image_mask(msk)
+
+    param_i = 0
+    imsk = ssiaat_converter.image_to_itable(msk)
+    c0 = pd.Series(fitted_model.C[0], index=fitted_model.idx)
+    c1 = pd.Series(fitted_model.C[1], index=fitted_model.idx)
+    # c1 = ssiaat_converter.image_to_itable(fitted_model.C[1])
+
+    ss_contsub = fitted_model.cont_sub(s["wvl"], s["image"])
+    # ss_contsub_n_normed = fitted_model.norm(s["wvl"], ss_contsub, param_i)
+
+    _, ccc = s["wvl"].align(c0[imsk], join="left")
+
+    import matplotlib.pyplot as plt
+    w = s["wvl"]
+    plt.scatter(s["wvl"], ss_contsub / ccc, s=1)
+
+    xx = np.linspace(2.6, 4.0, 100)
+
+    median_c1_c0 = np.nanmedian(c1[imsk] / c0[imsk])
+    cc0 = spectral_model.models[0](xx)
+    cc1 = median_c1_c0 * spectral_model.models[1](xx)
+    plt.plot(xx,  cc0 + cc1, "-", lw=3, alpha=0.5)
+    plt.plot(xx, cc0)
+    plt.plot(xx, cc1)
+    plt.show()
+    # stable.
 
 if __name__ == '__main__':
     main()
