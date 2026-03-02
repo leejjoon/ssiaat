@@ -78,7 +78,22 @@ class SpectralTable:
 
     @property
     def converter(self):
-        return self._obj.attrs.get("ssiaat_converter", getattr(self._obj, "_ssiaat_converter", None))
+        # 1. Try to get the live converter instance from private attribute
+        conv = getattr(self._obj, "_ssiaat_converter", None)
+        if conv is not None:
+            return conv
+        
+        # 2. Reconstruct from attrs if serialized/lost
+        header_cards = self._obj.attrs.get("ssiaat_template_header")
+        if header_cards:
+            header = fits.Header.fromstring("".join(header_cards))
+            conv = SsiaatConverter(header)
+            # Cache it as a private attribute for subsequent fast access
+            try:
+                self._obj._ssiaat_converter = conv
+            except Exception: pass
+            return conv
+        return None
 
     def make_simple_image(self, w1, w2):
         dfc = self._obj.query(f"({w1} < wvl) and (wvl < {w2})")
@@ -96,7 +111,21 @@ class ImageTable:
 
     @property
     def converter(self):
-        return self._obj.attrs.get("ssiaat_converter", getattr(self._obj, "_ssiaat_converter", None))
+        # 1. Try to get live converter
+        conv = getattr(self._obj, "_ssiaat_converter", None)
+        if conv is not None:
+            return conv
+        
+        # 2. Reconstruct from attrs
+        header_cards = self._obj.attrs.get("ssiaat_template_header")
+        if header_cards:
+            header = fits.Header.fromstring("".join(header_cards))
+            conv = SsiaatConverter(header)
+            try:
+                self._obj._ssiaat_converter = conv
+            except Exception: pass
+            return conv
+        return None
 
 
 class Image(np.ndarray):
@@ -123,16 +152,21 @@ class Image(np.ndarray):
 
 
 class SsiaatConverter:
-    def __init__(self, template_file):
-        self.tmpl = fits.open(template_file)
-        # wcs_tmpl = WCS(tmpl[0].header)
-        self.tmpl_shape = self.tmpl[0].data.shape
+    def __init__(self, header: fits.Header):
+        self.header = header
+        self.tmpl_shape = (self.header['NAXIS2'], self.header['NAXIS1'])
 
-        # 2d array
+        # 2d array for pixel indices
         self.tmpl_ind = np.sum(np.indices(self.tmpl_shape)
                                * np.array([self.tmpl_shape[-1], 1]).reshape((2, 1, 1)),
                                axis=0, dtype="int32")
         self.tmpl_ind_flat = np.ravel(self.tmpl_ind)
+
+    @classmethod
+    def from_file(cls, template_file):
+        with fits.open(template_file) as hdul:
+            header = hdul[0].header.copy()
+        return cls(header)
 
     def itable_to_image(self, itable: pd.Series, ignore_index_name=False):
         # itable should be a series whose index is a subset of tmpl_ind.
@@ -152,7 +186,13 @@ class SsiaatConverter:
                              " not have duplicates which is unusual. If you are sure"
                              "with the input, set `ignore_index_check` to True.")
 
-        df.attrs["ssiaat_converter"] = self
+        # Cache the live converter
+        df._ssiaat_converter = self
+        
+        # Store serializable parts in attrs (standard FITS header cards)
+        s = self.header.tostring()
+        df.attrs["ssiaat_template_header"] = [s[i:i+80] for i in range(0, len(s), 80)]
+        
         return df
 
 
@@ -348,10 +388,10 @@ def get_test_model():
     return spectral_model
 
 
-def main():
+def test_save():
     root = "eso_244"
     template_name = f"{root}_template.fits"
-    ssiaat_converter = SsiaatConverter(template_name)
+    ssiaat_converter = SsiaatConverter.from_file(template_name)
 
     from pathlib import Path
     datadir = Path(".")
@@ -360,6 +400,36 @@ def main():
 
     stable_ = ssiaat_converter.read_stable(*fnlist)
     stable = stable_.query("(2.6 < wvl) and (wvl < 4.0)")
+
+    stable.to_parquet("a.parquet")
+
+def test_load():
+
+    stable = pd.read_parquet("a.parquet")
+    print(stable.spectral.converter.tmpl_shape)
+    # stable = stable_.query("(2.6 < wvl) and (wvl < 4.0)")
+
+    # stable.to_parquet("a.parquet")
+
+
+def main():
+    if False:
+        root = "eso_244"
+        template_name = f"{root}_template.fits"
+        ssiaat_converter = SsiaatConverter.from_file(template_name)
+
+        from pathlib import Path
+        datadir = Path(".")
+
+        fnlist = [str(datadir / f"{root}_b{band}.parquet") for band in [3, 4, 5]]
+
+        stable_ = ssiaat_converter.read_stable(*fnlist)
+        stable = stable_.query("(2.6 < wvl) and (wvl < 4.0)")
+
+    else:
+        stable = pd.read_parquet("a.parquet")
+
+    converter = stable.spectral.converter
 
     im = stable.spectral.make_simple_image(3.1, 4.0)
     # fits.PrimaryHDU(data=im).writeto("a.fits", overwrite=True)
@@ -372,7 +442,7 @@ def main():
 
     print(fitted_model.C[0])
     itable = fitted_model.contC[1]
-    im = ssiaat_converter.itable_to_image(itable) #, # pd.Series(C[:, 1], index=idx),
+    im = stable.spectral.converter.itable_to_image(itable) #, # pd.Series(C[:, 1], index=idx),
                                           # ignore_index_name=True)
     # fits.PrimaryHDU(data=im).writeto("b.fits", overwrite=True)
 
@@ -385,7 +455,7 @@ def main():
     s = stable.spectral.filter_with_image_mask(msk)
 
     param_i = 0
-    imsk = ssiaat_converter.image_to_itable(msk)
+    imsk = stable.spectral.converter.image_to_itable(msk)
     c0 = fitted_model.C[0]
     c1 = fitted_model.C[1]
 
@@ -410,5 +480,6 @@ def main():
     # stable.
 
 if __name__ == '__main__':
+    # test_load()
     main()
 
