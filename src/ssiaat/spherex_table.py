@@ -78,13 +78,11 @@ class SpectralTable:
 
     @property
     def converter(self):
-        return getattr(self._obj, "_ssiaat_converter", None)
+        return self._obj.attrs.get("ssiaat_converter", getattr(self._obj, "_ssiaat_converter", None))
 
     def make_simple_image(self, w1, w2):
         dfc = self._obj.query(f"({w1} < wvl) and (wvl < {w2})")
         s = dfc.groupby(by=dfc.index)["image"].mean()
-        # Propagate converter to the resulting series
-        s._ssiaat_converter = self.converter
         return self.converter.itable_to_image(s)
 
     def filter_with_image_mask(self, msk):
@@ -98,7 +96,7 @@ class ImageTable:
 
     @property
     def converter(self):
-        return getattr(self._obj, "_ssiaat_converter", None)
+        return self._obj.attrs.get("ssiaat_converter", getattr(self._obj, "_ssiaat_converter", None))
 
 
 class Image(np.ndarray):
@@ -118,7 +116,7 @@ class Image(np.ndarray):
         self._ssiaat_converter = getattr(obj, '_ssiaat_converter', None)
 
     def to_itable(self):
-        """Converts the image back to an ImageTable using its converter."""
+        """Converts the image back to its tabular form using its converter."""
         if self._ssiaat_converter is None:
             raise ValueError("No ssiaat_converter attached to this Image.")
         return self._ssiaat_converter.image_to_itable(self)
@@ -154,7 +152,7 @@ class SsiaatConverter:
                              " not have duplicates which is unusual. If you are sure"
                              "with the input, set `ignore_index_check` to True.")
 
-        df._ssiaat_converter = self
+        df.attrs["ssiaat_converter"] = self
         return df
 
 
@@ -246,22 +244,23 @@ class FitResults:
     def __init__(self, idx, C, Cerr=None, *, model=None):
         self.idx = idx
         self._C = C
-        self.C = [C[:, i] for i in range(len(model.model_names))]
-        self.contC = [C[:, i] for i in range(len(model.model_names),
+        # Store coefficients as Series to leverage pandas index alignment
+        self.C = [pd.Series(C[:, i], index=idx) for i in range(len(model.model_names))]
+        self.contC = [pd.Series(C[:, i], index=idx) for i in range(len(model.model_names),
                                              len(model.all_model_names))]
         self._Cerr = Cerr
         self.model = model
 
     def cont_sub(self, wvl, spec):
-        # wvl = stable["wvl"]
-        cont_amps = [wvl.align(pd.Series(c, index=self.idx), join="left")[1] for c
-                     in self.contC]
-        cont = np.sum([a*m(wvl) for a, m in zip(cont_amps, self.model.cont_models)], axis=0)
-        return spec - pd.Series(cont, index=wvl.index)
+        # Using .reindex(wvl.index).values ensures we get a numpy array of the same length
+        # as wvl, with values broadcasted to each duplicate index in the original order.
+        cont = sum(amp.reindex(wvl.index).values * m(wvl)
+                   for amp, m in zip(self.contC, self.model.cont_models))
+        return spec - cont
 
     def norm(self, wvl, spec, param_i):
-        norm = wvl.align(pd.Series(self.C[param_i], index=self.idx), join="left")[1]
-        return spec / norm
+        # Using .reindex(wvl.index).values ensures we get a numpy array of the same length
+        return spec / self.C[param_i].reindex(wvl.index).values
 
 
 class Model:
@@ -361,7 +360,6 @@ def main():
 
     stable_ = ssiaat_converter.read_stable(*fnlist)
     stable = stable_.query("(2.6 < wvl) and (wvl < 4.0)")
-    stable._ssiaat_converter = stable_._ssiaat_converter
 
     im = stable.spectral.make_simple_image(3.1, 4.0)
     # fits.PrimaryHDU(data=im).writeto("a.fits", overwrite=True)
@@ -373,11 +371,10 @@ def main():
     fitted_model = spectral_model.least_square_fit(stable)
 
     print(fitted_model.C[0])
-    itable = pd.Series(fitted_model.contC[1], index=fitted_model.idx)
-    itable._ssiaat_converter = ssiaat_converter
+    itable = fitted_model.contC[1]
     im = ssiaat_converter.itable_to_image(itable) #, # pd.Series(C[:, 1], index=idx),
                                           # ignore_index_name=True)
-    fits.PrimaryHDU(data=im).writeto("b.fits", overwrite=True)
+    # fits.PrimaryHDU(data=im).writeto("b.fits", overwrite=True)
 
     # spatial filtering
     sreg = "image;ellipse(31.403764,28.577416,4.3068155,8.0752791,353.88636)"
@@ -389,18 +386,17 @@ def main():
 
     param_i = 0
     imsk = ssiaat_converter.image_to_itable(msk)
-    c0 = pd.Series(fitted_model.C[0], index=fitted_model.idx)
-    c1 = pd.Series(fitted_model.C[1], index=fitted_model.idx)
-    # c1 = ssiaat_converter.image_to_itable(fitted_model.C[1])
+    c0 = fitted_model.C[0]
+    c1 = fitted_model.C[1]
 
     ss_contsub = fitted_model.cont_sub(s["wvl"], s["image"])
-    # ss_contsub_n_normed = fitted_model.norm(s["wvl"], ss_contsub, param_i)
+    assert np.all(s.index.values == ss_contsub.index.values)
 
-    _, ccc = s["wvl"].align(c0[imsk], join="left")
+    # ss_contsub_n_normed = fitted_model.norm(s["wvl"], ss_contsub, param_i)
 
     import matplotlib.pyplot as plt
     w = s["wvl"]
-    plt.scatter(s["wvl"], ss_contsub / ccc, s=1)
+    plt.scatter(s["wvl"], ss_contsub / c0.reindex(s.index), s=1)
 
     xx = np.linspace(2.6, 4.0, 100)
 
