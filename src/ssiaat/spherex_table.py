@@ -204,47 +204,6 @@ class SsiaatConverter:
         return df
 
 
-def read_stable(*fnlist, tmpl_name="", index_column="tmpl_ind"):
-    pass
-
-
-# class TableToImage:
-#     def __init__(self, template_file):
-#         self.tmpl = fits.open(template_file)
-#         # wcs_tmpl = WCS(tmpl[0].header)
-#         self.tmpl_shape = self.tmpl[0].data.shape
-
-#         self.tmpl_ind = np.sum(np.indices(self.tmpl_shape) * np.array([self.tmpl_shape[-1], 1]).reshape((2, 1, 1)),
-#                           axis=0, dtype="int32")
-
-#     def series_to_image(self, s, ignore_index_name=False):
-#         # s should be a series whose index is a subset of tmpl_ind.
-#         if not ignore_index_name and s.index.name != "tmpl_ind":
-#             raise ValueError("input s needs to have an index named 'tmpl_ind' unless 'ignore_index_name' is True")
-#         im = s.reindex(self.tmpl_ind.flat).array.reshape(self.tmpl_shape)
-#         return im
-
-
-
-# %%
-
-# class TableTool:
-#     """
-#     table should have
-#       tmpl_ind : value identifying a single pixel in the image.
-#       wvl : wavelength in um
-#     """
-#     def __init__(self):
-#         self.table = None
-
-#     def load_table(self):
-#         pass
-
-#     def make_simple_image(self, um0, um1):
-#         dff = self.table.query(f"({um0} < wvl) and (wvl < {um1})").copy()
-
-
-
 # %%
 from scipy.interpolate import interp1d
 from spherex_tabular_bandpass import Tabular_Bandpass
@@ -315,6 +274,12 @@ class FitResults:
     def norm(self, wvl, spec, param_i):
         # Using .reindex(wvl.index).values ensures we get a numpy array of the same length
         return spec / self.C[param_i].reindex(wvl.index).values
+
+    def cont_sub_n_norm(self, wvl, spec, param_i):
+        # Using .reindex(wvl.index).values ensures we get a numpy array of the same length
+        spec_cont_sub = self.cont_sub(wvl, spec)
+        return spec_cont_sub / self.C[param_i].reindex(wvl.index).values
+
 
 
 class Model:
@@ -472,22 +437,25 @@ def main():
 
     param_i = 0
     imsk = converter.image_to_itable(msk)
-    c0 = fitted_model.C[0]
-    c1 = fitted_model.C[1]
 
     ss_contsub = fitted_model.cont_sub(s["wvl"], s["image"])
 
     # ss_contsub_n_normed = fitted_model.norm(s["wvl"], ss_contsub, param_i)
 
     import matplotlib.pyplot as plt
-    w = s["wvl"]
-    plt.scatter(s["wvl"], ss_contsub / c0.reindex(s.index), s=1)
+    plt.scatter(s["wvl"],
+                fitted_model.cont_sub_n_norm(s["wvl"], s["image"], param_i),
+                s=1)
 
     xx = np.linspace(2.6, 4.0, 100)
 
+    c0 = fitted_model.C[0]
+    c1 = fitted_model.C[1]
     median_c1_c0 = np.nanmedian(c1[imsk] / c0[imsk])
+
     cc0 = spectral_model.models[0](xx)
     cc1 = median_c1_c0 * spectral_model.models[1](xx)
+
     plt.plot(xx,  cc0 + cc1, "-", lw=3, alpha=0.5)
     plt.plot(xx, cc0)
     plt.plot(xx, cc1)
