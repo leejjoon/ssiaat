@@ -52,6 +52,34 @@ import numpy as np
 import numpy.typing as npt
 from astropy.io import fits
 
+class TemplateHeaderCards:
+    @classmethod
+    def from_header(cls, header):
+        s = header.tostring()
+        return [s[i:i+80] for i in range(0, len(s), 80)]
+
+    @classmethod
+    def from_dataframe(cls, df):
+        # to_header(cls, obj):
+        return df.attrs.get("ssiaat_template_header")
+
+
+    @classmethod
+    def update_dataframe_from_header(cls, df, header):
+        # s = header.tostring()
+        df.attrs["ssiaat_template_header"] = cls.from_header(header)
+        # [s[i:i+80] for i in range(0, len(s), 80)]
+
+    @classmethod
+    def retrieve_header_from_dataframe(cls, df):
+        # to_header(cls, obj):
+        header_cards = cls.from_dataframe(df)
+        if header_cards:
+            header = fits.Header.fromstring("".join(header_cards))
+        else:
+            header = fits.Header()
+
+        return header
 
 # %%
 from pandas.api.types import is_integer_dtype
@@ -97,9 +125,9 @@ class SpectralTable:
             return conv
         return None
 
-    def make_simple_image(self, w1, w2):
+    def make_simple_image(self, w1, w2, column="image"):
         dfc = self._obj.query(f"({w1} < wvl) and (wvl < {w2})")
-        s = dfc.groupby(by=dfc.index)["image"].mean()
+        s = dfc.groupby(by=dfc.index)[column].mean()
         return self.converter.itable_to_image(s)
 
     def filter_with_image_mask(self, msk):
@@ -159,6 +187,22 @@ class Image(np.ndarray):
         return self._ssiaat_converter.image_to_itable(self)
 
 
+
+def read_stable(*fnlist, index_column="tmpl_ind", ignore_index_check=False):
+    header_cards = None
+    dfl = []
+    for fn in fnlist:
+        df = pd.read_parquet(fn)
+        dfl.append(df)
+        header_cards_ = TemplateHeaderCards.from_dataframe(df)
+        if header_cards is not None and header_cards != header_cards:
+            raise ValueError("the input files have inconsistent metadata.")
+        header_cards = header_cards_
+
+    df = pd.concat(dfl, axis=0).set_index(index_column)
+    return df
+
+
 class SsiaatConverter:
     def __init__(self, header: fits.Header):
         self.header = header
@@ -182,12 +226,27 @@ class SsiaatConverter:
         im = Image(im_, ssiaat_converter=self)
         return im
 
-    def image_to_itable(self, image: Image | np.ndarray):
+    def image_to_itable(self, image: Image | np.ndarray,
+                        mask: None | Image | np.ndarray = None):
         itable = pd.Series(np.ravel(image), index=self.tmpl_ind_flat)
+        if mask is not None:
+            itable_msk = pd.Series(np.ravel(mask), index=self.tmpl_ind_flat)
+            itable = itable[itable_msk]
+
         return itable
 
     def read_stable(self, *fnlist, index_column="tmpl_ind", ignore_index_check=False):
-        dfl = [pd.read_parquet(fn) for fn in fnlist]
+        header_cards = None
+        dfl = []
+        for fn in fnlist:
+            df = pd.read_parquet(fn)
+            dfl.append(df)
+            header_cards_ = TemplateHeaderCards.get_from_dataframe(df)
+            if header_cards is not None and header_cards != header_cards:
+                raise ValueError("the input files have inconsistent metadata.")
+            header_cards = header_cards_
+
+        # dfl = [pd.read_parquet(fn) for fn in fnlist]
         df = pd.concat(dfl, axis=0).set_index(index_column)
         if not ignore_index_check and not check_index_stable(df):
              raise ValueError("The input dataframe's index is no of integer of do"
@@ -198,8 +257,10 @@ class SsiaatConverter:
         df._ssiaat_converter = self
         
         # Store serializable parts in attrs (standard FITS header cards)
-        s = self.header.tostring()
-        df.attrs["ssiaat_template_header"] = [s[i:i+80] for i in range(0, len(s), 80)]
+        SsiaatTemplateHeader.update_dataframe_from_header(df, self.header)
+
+        # s = self.header.tostring()
+        # df.attrs["ssiaat_template_header"] = [s[i:i+80] for i in range(0, len(s), 80)]
         
         return df
 
