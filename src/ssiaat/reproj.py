@@ -27,7 +27,6 @@ from .flags import get_flagval, DEFAULT_FLAGS
 # DEFAULT_FLAGS: tuple[str, ...] = ("ALL", "-FULLSAMPLE", "-SOURCE")
 
 def get_metadata_from_filename(fn):
-    from pathlib import Path
     fn = Path(fn)
     pipe_run = fn.name.split(".")[0].split("_spx_")[-1]
 
@@ -303,6 +302,23 @@ class SphxReprojector:
         ))
 
         return df
+
+
+def get_df_from_hdul(hdul, wcs_tmpl, aux_metadata=None):
+    if aux_metadata is None:
+        aux_metadata = {}
+
+    reprojector = SphxReprojector(hdul, aux_metadata=aux_metadata)
+
+    out_hdul = reprojector.process_single(wcs_tmpl)
+
+    if out_hdul is not None:
+
+        df = reprojector.hdul_to_pandas(out_hdul)
+    else:
+        df = None
+
+    return df
 
 
 def main():
