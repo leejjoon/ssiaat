@@ -22,6 +22,30 @@ def query_overlapping(ra_deg, dec_deg, side_deg, release="qr2", good_astrometry_
 
     return df_query
 
+def check_weeks(df_query):
+    """This is to compare the query results from the saved one and check which weeks need to be reprocessed."""
+
+    # FIXME still in progress.
+    df_to_save = df_query[["filename", "OBSID"]].copy()
+    df_to_save["weekname"] = df_to_save["OBSID"].str.split("_").str.get(0)
+    df_to_save.to_csv(rootdir / "weekgroup.csv", index=False)
+
+    new_record = df_to_save.set_index("filename")
+    # Comparing a slice against the same slice to ensure identical labeling
+    old_record = dff.iloc[:2400, :]
+    # result = dff[~dff['filename'].isin(subset['filename'])]
+    only_in_old = old_record[~old_record.index.isin(new_record.index)]
+    only_in_new = new_record[~new_record.index.isin(old_record.index)]
+    print("only in old: {} files, {} weeks".format(len(only_in_old),
+                                                   len(only_in_old["weekname"].unique())))
+    print("only in new: {} files, {} weeks".format(len(only_in_new),
+                                                   len(only_in_new["weekname"].unique())))
+
+    # print(result)
+
+    weeks_to_process = set(only_in_new["weekname"].unique())
+    weeks_to_process.update(only_in_old["weekname"].unique())
+    weeks_to_process
 
 def main():
     from pathlib import Path
