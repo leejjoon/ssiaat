@@ -63,6 +63,49 @@ def _get_table_from_filenames(filenames):
     ))
 
 
+from pathlib import Path
+
+# def get_readpath(rootdir, plan, band, root):
+
+def find_local_uri(fn, release="qr2"):
+
+    # path in olaf
+    # "/proj/internal_group/spherex/Shared/prod-qr2/repo//level2"
+    # release = "qr2"
+
+    rootdir = Path("/proj/internal_group/spherex/Shared/") / f"prod-{release}" / "repo"
+
+    # FIXME we should have a simpler way
+    k = _get_table_from_filenames([fn]).iloc[0]
+    plan = k["plan"]
+    band = k["band"]
+    root = "{}_{}D{}".format(k["pointing"], k["step"], k["band"])
+
+    pipe_version_candidates = sorted(p.name for p in (rootdir / f"level2/{plan}").iterdir())
+
+    for pipe_ver in pipe_version_candidates:
+        # print("pipe_ver", pipe_ver)
+        file_key = f"level2/{plan}/{pipe_ver}/{band}/level2_{plan}_{root}_spx_{pipe_ver}.fits"
+        cand = rootdir / file_key
+        # print(cand)
+        if cand.exists():
+            return cand
+
+    return None
+
+# fn = "filtered_images.csv"
+# df = pd.read_csv(fn)
+
+# df_local = df[df["s3uri"].isna()].copy()
+
+# row = df_local.iloc[0]
+
+def get_local_path(row):
+    p = get_readpath(rootdir, row["plan"], row["band"], row["root"])
+    return str(p)
+
+
+
 async def _find_latest_single_async(row, fs, root_path, release, semaphore):
     """Asynchronously find the latest URI for a single row using fsspec."""
     async with semaphore:
