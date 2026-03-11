@@ -142,6 +142,39 @@ def check_overwrapp():
         return False
 
 
+def convert_hdul_to_df(hdul, bandpass_model, band, metadata):
+    tmpl_shape = hdul[0].data.shape
+
+
+    # ind = np.sum(np.indices((2048, 2048)) * np.array([2048, 1]).reshape((2, 1, 1)),
+    #              axis=0, dtype="int32")
+    # y, x = np.divmod(ind, 2048)
+
+
+    tmpl_ind = np.sum(np.indices(tmpl_shape) * np.array([tmpl_shape[-1], 1]).reshape((2, 1, 1)),
+                      axis=0, dtype="int32")
+
+    msk = np.isfinite(hdul[0].data)
+    # src_y, src_x = np.divmod(hdul[2].data[msk], 2048)
+    src_y, src_x = SphxReprojector.get_src_yx(hdul[2].data[msk])
+    wvl = bandpass_model(src_x, src_y,
+                         array=int(band), central_bandpass_only=True)[0]
+
+    # iy, ix = np.indices((2048, 2048))
+    # wvl = bp2(ix, iy, central_bandpass_only=True)
+
+    df = pd.DataFrame(dict(
+        tmpl_ind=tmpl_ind[msk].copy(),
+        image=hdul[0].data.astype("float32")[msk],
+        variance=hdul[1].data.astype("float32")[msk],
+        #srcind=hdul[2].data[msk]
+        src_x=src_x,
+        src_y=src_y,
+        wvl=wvl,
+        **metadata
+    ))
+
+    return df
 
 class SphxReprojector:
     DATASHAPE = (2048, 2048)
@@ -263,43 +296,8 @@ class SphxReprojector:
 
         hdul : PrimaryHDU-Image, 2nd-Variance, 3rd-tmpl_ind
         """
-        # band, channel = row[["band", "channel"]]
-        # outdir = Path("intermediate/level2") / f"b{band}_c{channel:03d}"
-        # fn = outdir / Path(row["filepath"]).with_suffix(".reproj.fits").name
 
-        # hdul = fits.open(fn)
-
-        # hdul[0].data.shape
-        tmpl_shape = hdul[0].data.shape
-
-
-        # ind = np.sum(np.indices((2048, 2048)) * np.array([2048, 1]).reshape((2, 1, 1)),
-        #              axis=0, dtype="int32")
-        # y, x = np.divmod(ind, 2048)
-
-
-        tmpl_ind = np.sum(np.indices(tmpl_shape) * np.array([tmpl_shape[-1], 1]).reshape((2, 1, 1)),
-                          axis=0, dtype="int32")
-
-        msk = np.isfinite(hdul[0].data)
-        # src_y, src_x = np.divmod(hdul[2].data[msk], 2048)
-        src_y, src_x = self.get_src_yx(hdul[2].data[msk])
-        wvl = self.bandpass_model(src_x, src_y,
-                                  array=int(self.band), central_bandpass_only=True)[0]
-
-        # iy, ix = np.indices((2048, 2048))
-        # wvl = bp2(ix, iy, central_bandpass_only=True)
-
-        df = pd.DataFrame(dict(
-            tmpl_ind=tmpl_ind[msk].copy(),
-            image=hdul[0].data.astype("float32")[msk],
-            variance=hdul[1].data.astype("float32")[msk],
-            #srcind=hdul[2].data[msk]
-            src_x=src_x,
-            src_y=src_y,
-            wvl=wvl,
-            **self.metadata
-        ))
+        df = convert_hdul_to_df(hdul, self.bandpass_model, self.band, self.metadata)
 
         return df
 
