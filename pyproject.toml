@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "ssiaat"
 version = "0.0.1"
 authors = [
-  { name="Gemini", email="gemini@google.com" },
+  { name="Jae-Joon Lee", email="lee.j.joon@google.com" },
 ]
 description = "SPHEREx Spectral Image as a Table"
 readme = "README.md"
@@ -26,8 +26,8 @@ dependencies = [
     "tqdm",
     "aioboto3",
     "aiohttp",
-    "fsspec",
-    "s3fs",
+    "fsspec[http]<=2025.3.0",
+    "s3fs<=2025.3.0",
 ]
 
 [tool.setuptools.packages.find]
