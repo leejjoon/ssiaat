@@ -12,6 +12,18 @@ def tanh_step(a, x1, xx):
     return yy
 
 
+class const:
+    def __init__(self):
+        """
+        step-like function. The transition begins neart 75% point until 125% point.
+        """
+        pass
+        # self.a = a
+
+    def __call__(self, mu):
+        # return tanh_step(self.a, 1, (mu-self.mu0)/self.dmu/2+0.5)
+        return np.ones_like(mu)
+
 class cont_left:
     def __init__(self, mu0, mu1, a):
         """
@@ -208,3 +220,14 @@ def get_pah():
 def get_conts(w0, w1, a=0.3):
     w01 = 0.5 * (w0 + w1)
     return cont_left(w0, w01, a), cont_right(w01, w1, a)
+
+def get_br_a():
+    "band = 5"
+    # center = 4.0519
+    d_shift2 = 0.012 - 0.002# somehow wavelength solutionseem to be off
+    a2 = 0.75 + 0.8# - 0.2
+    br_a = hflattop(4.0372-d_shift2, 4.0724-d_shift2, a=a2) # a adjusted to fit the bandpss
+
+    # cont_left : 3.9099 - 4.0504
+    # cont_right : 4.0504 - 4.1949
+    return br_a
