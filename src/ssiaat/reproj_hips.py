@@ -25,7 +25,8 @@ from astropy.wcs import WCS
 from astropy.coordinates import Galactic
 from spherex_utils.utils.mosaic_utils import get_flagval, DEFAULT_FLAGS
 
-from spherex_tabular_bandpass import Tabular_Bandpass
+# from spherex_tabular_bandpass import Tabular_Bandpass
+from .tabular_bandpass_lite import Tabular_Bandpass_lite
 
 def ingest_hdul(hdulist: fits.HDUList, *,
                 flags: Iterable[str] = DEFAULT_FLAGS,
@@ -158,7 +159,7 @@ def reproject_to_hips_tile(array_in, wcs_in, header_out,
 
 class SphxHpxProcess:
     def __init__(self, PROJNAME, plan, root, band, hdul, frame_name="galactic",
-                 flags=None):
+                 flags=None, bandpass_model=None):
         self.PROJNAME = PROJNAME
         self.plan = plan
         self.root = root
@@ -182,7 +183,8 @@ class SphxHpxProcess:
                           axis=0, dtype="float32")
 
         # self.bandpass_model = utils.mosaic_utils.PixelToCentralWavelengthUsingWCS()
-        self.bandpass_model = Tabular_Bandpass(mode="tvac4")
+        self.bandpass_model = (Tabular_Bandpass_Lite() if bandpass_model is None
+                               else bandpass_model)
 
     def process_hid(self, level, tile_size, hid):
         header = tile_header(level=level, index=hid, frame=self.frame,
@@ -214,7 +216,7 @@ class SphxHpxProcess:
                                                       reproject_function=reproject_adaptive,
                                                       shape_out=shape_out,
                                                       bad_value_mode="ignore",
-                                                      parallel=True,
+                                                      parallel=False,
                                                       )
         if np.all(footprint == 0):
             return None
@@ -225,12 +227,12 @@ class SphxHpxProcess:
         # FIXME: having dtype of int32 fails when reproj with nan issue.
         # So we use float32 then convert it to int32 while saving
 
-        outputarray = np.zeros(array_out[0].data.shape, dtype="float32")
+        # outputarray = np.zeros(array_out[0].data.shape, dtype="float32")
 
         ind_out, footprint = reproject_to_hips_tile(self.ind, self.wcs_in, header,
                                                     reproject_function=reproject_interp,
                                                     order=0,
-                                                    output_array=outputarray,
+                                                    # output_array=outputarray,
                                                     shape_out=shape_out,
                                                     # # shape_out=N,
                                                     # bad_value_mode="ignore",

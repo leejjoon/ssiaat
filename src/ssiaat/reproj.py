@@ -20,7 +20,8 @@ from reproject.hips.utils import tile_header
 from astropy.wcs import WCS
 from astropy.coordinates import Galactic
 
-from spherex_tabular_bandpass import Tabular_Bandpass
+from .wcs_helper import TemplateHeaderCards
+from .tabular_bandpass_lite import Tabular_Bandpass_Lite
 
 #from spherex_utils.utils.mosaic_utils import get_flagval, DEFAULT_FLAGS
 from .flags import get_flagval, DEFAULT_FLAGS
@@ -33,7 +34,7 @@ def get_metadata_from_filename(fn):
     return dict(pipe_run=pipe_run)
 
 
-def ingest_hdul(hdulist: fits.HDUList, *,
+def _ingest_hdul(hdulist: fits.HDUList, *,
                 flags: Iterable[str] = DEFAULT_FLAGS,
                 process_variance: bool = True) -> bool | list:
     """Prepare given hdul and return ingested image data for mosaicking.
@@ -142,7 +143,7 @@ def check_overwrapp():
         return False
 
 
-def convert_hdul_to_df(hdul, bandpass_model, band, metadata):
+def _convert_hdul_to_df(hdul, bandpass_model, band, metadata):
     tmpl_shape = hdul[0].data.shape
 
 
@@ -199,7 +200,8 @@ class SphxReprojector:
         return src_y, src_x
 
     def __init__(self, input_hdul, *,
-                 flags=None, aux_metadata=None):
+                 flags=None, aux_metadata=None,
+                 bandpass_model=None):
         # self.PROJNAME = PROJNAME
         # self.plan = plan
         # self.root = root
@@ -219,7 +221,7 @@ class SphxReprojector:
             self.metadata.update(aux_metadata)
 
         self.flags = DEFAULT_FLAGS if flags is None else flags
-        nddata_list = ingest_hdul(input_hdul, flags=self.flags, process_variance=True)
+        nddata_list = _ingest_hdul(input_hdul, flags=self.flags, process_variance=True)
         if isinstance(nddata_list, bool):
             raise RuntimeError()
 
@@ -229,7 +231,9 @@ class SphxReprojector:
         self.ind = self.get_ind_image(input_hdul["IMAGE"].data)
 
         # self.bandpass_model = utils.mosaic_utils.PixelToCentralWavelengthUsingWCS()
-        self.bandpass_model = Tabular_Bandpass(mode="tvac4")
+        
+        self.bandpass_model = (Tabular_Bandpass_Lite() if bandpass_model is None
+                               else bandpass_model)
 
     def process_single(self, output_wcs_tmpl):
 
@@ -288,7 +292,6 @@ class SphxReprojector:
              fits.ImageHDU(data=ind_out.astype("int32"), header=out_header)]
         )
 
-
         return out_hdul
 
     def hdul_to_pandas(self, hdul):
@@ -297,7 +300,32 @@ class SphxReprojector:
         hdul : PrimaryHDU-Image, 2nd-Variance, 3rd-tmpl_ind
         """
 
-        df = convert_hdul_to_df(hdul, self.bandpass_model, self.band, self.metadata)
+        df = _convert_hdul_to_df(hdul, self.bandpass_model, self.band, self.metadata)
+        cards = TemplateHeaderCards.from_header(hdul[1].header)
+        cards.update_dataframe(df)
+
+        return df
+
+    def merge_to_stable(self, dflist, tmpl_wcs=None):
+        # cards = TemplateHeaderCards.from_dataframe(dflist[0])
+        if tmpl_wcs is None:
+            cards_list = [TemplateHeaderCards.from_dataframe(df) for df in dflist]
+            master_cards = cards_list[0]
+            if any(master_cards.hash != cards.hash for cards in cards_list):
+                raise RuntimeError("template header cards  are inconsistent.")
+
+        else:
+            master_cards = TemplateHeaderCards.from_header(tmpl_wcs.to_header())
+
+        df = pd.concat(dflist, ignore_index=True).set_index("tmpl_ind")
+
+        master_cards.update_dataframe(df)
+        # # update attr so that the output can be loaded as a SpectralTable
+        # tmpl_header = tmpl_wcs.to_header()
+        # tmpl_header["NAXIS"] = 2
+        # tmpl_header["NAXIS2"], tmpl_header["NAXIS1"] = tmpl_wcs.array_shape
+
+        # df0.attrs["ssiaat_template_header"] = tmpl_header.tostring()
 
         return df
 

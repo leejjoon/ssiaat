@@ -52,34 +52,6 @@ import numpy as np
 import numpy.typing as npt
 from astropy.io import fits
 
-class TemplateHeaderCards:
-    @classmethod
-    def from_header(cls, header):
-        s = header.tostring()
-        return [s[i:i+80] for i in range(0, len(s), 80)]
-
-    @classmethod
-    def from_dataframe(cls, df):
-        # to_header(cls, obj):
-        return df.attrs.get("ssiaat_template_header")
-
-
-    @classmethod
-    def update_dataframe_from_header(cls, df, header):
-        # s = header.tostring()
-        df.attrs["ssiaat_template_header"] = cls.from_header(header)
-        # [s[i:i+80] for i in range(0, len(s), 80)]
-
-    @classmethod
-    def retrieve_header_from_dataframe(cls, df):
-        # to_header(cls, obj):
-        header_cards = cls.from_dataframe(df)
-        if header_cards:
-            header = fits.Header.fromstring("".join(header_cards))
-        else:
-            header = fits.Header()
-
-        return header
 
 # %%
 from pandas.api.types import is_integer_dtype
@@ -267,7 +239,8 @@ class SsiaatConverter:
 
 # %%
 from scipy.interpolate import interp1d
-from spherex_tabular_bandpass import Tabular_Bandpass
+# from spherex_tabular_bandpass import Tabular_Bandpass
+from .tabular_bandpass_lite import Tabular_Bandpass_Lite as Tabular_Bandpass
 
 class BandpassTool:
     def __init__(self, bandpass_model, band):
@@ -277,8 +250,8 @@ class BandpassTool:
         iy = np.arange(0, 2048)
         ix = np.zeros_like(iy) + 1024
 
-        wvl = self.bandpass_model(ix, iy, central_bandpass_only=True, array=band)
-        self.wvl_to_iy = interp1d(wwl[0], iy)
+        wvl, _ = self.bandpass_model(ix, iy, central_bandpass_only=True, array=band)
+        self.wvl_to_iy = interp1d(wwl, iy)
         
     def get_bp_at_wvl(self, center, as_knots=False):
         """
@@ -286,7 +259,7 @@ class BandpassTool:
         """
         iyy = self.wvl_to_iy(center)
 
-        w1, t1 = self.bandpaas_modelbp(1024, iyy, array=self.band)
+        w1, t1 = self.bandpaas_model(1024, iyy, array=self.band)
 
         if as_knots:
             return interp1d(w1, t1)
@@ -306,7 +279,7 @@ class BandpassTool:
 
 # %%
 from itertools import chain
-from vectorized_lstsq import vectorized_lstsq_numpy
+from .model.vectorized_lstsq import vectorized_lstsq_numpy
 
 class FitResults:
     def __init__(self, idx, C, Cerr=None, *, model=None,
@@ -321,6 +294,16 @@ class FitResults:
         if ssiaat_template_header is not None:
             for s in chain(self.C, self.contC):
                 s.attrs["ssiaat_template_header"] = ssiaat_template_header
+
+        if Cerr is not None:
+            self.Cerr = [pd.Series(Cerr[:, i], index=idx) for i in range(len(model.model_names))]
+            self.contCerr = [pd.Series(Cerr[:, i], index=idx)
+                             for i in range(len(model.model_names),
+                                            len(model.all_model_names))]
+
+            if ssiaat_template_header is not None:
+                for s in chain(self.Cerr, self.contCerr):
+                    s.attrs["ssiaat_template_header"] = ssiaat_template_header
 
         self._Cerr = Cerr
         self.model = model
