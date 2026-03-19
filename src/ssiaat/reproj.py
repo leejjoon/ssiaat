@@ -306,29 +306,6 @@ class SphxReprojector:
 
         return df
 
-    def merge_to_stable(self, dflist, tmpl_wcs=None):
-        # cards = TemplateHeaderCards.from_dataframe(dflist[0])
-        if tmpl_wcs is None:
-            cards_list = [TemplateHeaderCards.from_dataframe(df) for df in dflist]
-            master_cards = cards_list[0]
-            if any(master_cards.hash != cards.hash for cards in cards_list):
-                raise RuntimeError("template header cards  are inconsistent.")
-
-        else:
-            master_cards = TemplateHeaderCards.from_header(tmpl_wcs.to_header())
-
-        df = pd.concat(dflist, ignore_index=True).set_index("tmpl_ind")
-
-        master_cards.update_dataframe(df)
-        # # update attr so that the output can be loaded as a SpectralTable
-        # tmpl_header = tmpl_wcs.to_header()
-        # tmpl_header["NAXIS"] = 2
-        # tmpl_header["NAXIS2"], tmpl_header["NAXIS1"] = tmpl_wcs.array_shape
-
-        # df0.attrs["ssiaat_template_header"] = tmpl_header.tostring()
-
-        return df
-
 
 def get_df_from_hdul(hdul, wcs_tmpl, aux_metadata=None):
     if aux_metadata is None:
@@ -343,6 +320,24 @@ def get_df_from_hdul(hdul, wcs_tmpl, aux_metadata=None):
         df = reprojector.hdul_to_pandas(out_hdul)
     else:
         df = None
+
+    return df
+
+
+def merge_to_stable(dflist, tmpl_wcs=None):
+    # cards = TemplateHeaderCards.from_dataframe(dflist[0])
+    if tmpl_wcs is None:
+        cards_list = [TemplateHeaderCards.from_dataframe(df) for df in dflist]
+        master_cards = cards_list[0]
+        if any(master_cards.hash != cards.hash for cards in cards_list):
+            raise RuntimeError("template header cards  are inconsistent.")
+
+    else:
+        master_cards = TemplateHeaderCards.from_header(tmpl_wcs.to_header())
+
+    df = pd.concat(dflist, ignore_index=True).set_index("tmpl_ind")
+
+    master_cards.update_dataframe(df)
 
     return df
 
