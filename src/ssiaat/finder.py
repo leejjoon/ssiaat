@@ -180,6 +180,26 @@ def find_latest_uri(filenames, root_uri, release="qr2", progress: bool = False,
     return loop.run_until_complete(find_latest_uri_async(filenames, root_uri, release, progress, max_concurrency, storage_options))
 
 
+async def get_uri_updated_dataframe(df_query, root_uri=None):
+  if root_uri is None:
+    root_uri = "s3://nasa-irsa-spherex"
+
+  filenames = df_query["filename"].unique()
+
+  latest_uris = await find_latest_uri_async(filenames, root_uri,
+                                            release=release,
+                                            progress=True,
+                                            max_concurrency=30)
+
+  query_results = pd.DataFrame({
+              'filename': filenames,
+              'uri_decorated': latest_uris
+  })
+  df = query_results.merge(df_query.set_index("filename")["DETECTOR"], how="inner", left_on="filename", right_index=True)
+
+  return df, query_results
+
+
 def check_uri(df: pd.DataFrame, root_uri: str, progress: bool = False, storage_options: dict = None) -> pd.Series:
     """Check existence of URIs using fsspec."""
     if storage_options is None and root_uri.startswith("s3://"):
