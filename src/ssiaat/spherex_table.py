@@ -55,6 +55,7 @@ from astropy.io import fits
 
 # %%
 from pandas.api.types import is_integer_dtype
+from .wcs_helper import TemplateHeaderCards
 
 def check_index_stable(df):
     """
