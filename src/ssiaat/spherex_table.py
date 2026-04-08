@@ -173,7 +173,7 @@ def read_stable(*fnlist, index_column=None, ignore_index_check=False):
         header_cards = header_cards_
 
     df = pd.concat(dfl, axis=0)
-    if inde_column is not None:
+    if index_column is not None:
         df = df.set_index(index_column)
     return df
 
