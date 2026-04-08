@@ -1,6 +1,6 @@
 import numpy as np
-from spherex_utils.utils.mosaic_utils import SpectralChannelDefinition
-scd = SpectralChannelDefinition()
+#from spherex_utils.utils.mosaic_utils import SpectralChannelDefinition
+#scd = SpectralChannelDefinition()
 
 
 def tanh_step(a, x1, xx):
@@ -81,14 +81,14 @@ class hflattop:
         )
 
 class hflatline:
-    def __init__(self, mu_center_left, dmu_left, a_left, *, mu_center_right=None, dmu_right=None, a_right=None):
+    def __init__(self, mu_center_left, dmu_left, a_left, *, dmu_right=None, a_right=None):
         self.mu_center_left = mu_center_left # 0 = 0.5 * (mu0 + mu1)
-        self.mu_center_right = mu_center_left if mu_center_right is None else mu_center_right
+        self.mu_center_right = mu_center_left
         self.dmu_left = dmu_left
         self.dmu_right = dmu_left if dmu_right is None else dmu_right
 
         self.a_left = a_left
-        self.a_right = a_left if a_left is None else a_right
+        self.a_right = a_left if a_right is None else a_right
 
         # Note that cont_right/left is reversed. cont_right is left side of the
         # liine, for example.
@@ -105,7 +105,7 @@ class hflatline:
         )
 
 
-def channel_model(band: int | tuple[int, int], channel: int | tuple[int, int],
+def channel_model_deprecated(band: int | tuple[int, int], channel: int | tuple[int, int],
                   model: str, a: float):
 
     match band:
@@ -231,3 +231,9 @@ def get_br_a():
     # cont_left : 3.9099 - 4.0504
     # cont_right : 4.0504 - 4.1949
     return br_a
+
+def get_cont_model(cw0, cw1, a=0.3):
+    cw_middle = 0.5 * (cw0 + cw1)
+    cont_models = [cont_left(cw0, cw_middle, a), cont_right(cw_middle, cw1, a)]
+    return cont_models
+
