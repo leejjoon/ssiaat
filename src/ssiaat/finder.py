@@ -180,7 +180,7 @@ def find_latest_uri(filenames, root_uri, release="qr2", progress: bool = False,
     return loop.run_until_complete(find_latest_uri_async(filenames, root_uri, release, progress, max_concurrency, storage_options))
 
 
-async def get_uri_updated_dataframe(df_query, root_uri=None):
+async def get_uri_updated_dataframe(df_query, release, root_uri=None):
   if root_uri is None:
     root_uri = "s3://nasa-irsa-spherex"
 
