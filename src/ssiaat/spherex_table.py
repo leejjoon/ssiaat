@@ -160,7 +160,7 @@ class Image(np.ndarray):
 
 
 
-def read_stable(*fnlist, index_column="tmpl_ind", ignore_index_check=False):
+def read_stable(*fnlist, index_column=None, ignore_index_check=False):
     header_cards = None
     dfl = []
     for fn in fnlist:
@@ -171,7 +171,9 @@ def read_stable(*fnlist, index_column="tmpl_ind", ignore_index_check=False):
             raise ValueError("the input files have inconsistent metadata.")
         header_cards = header_cards_
 
-    df = pd.concat(dfl, axis=0).set_index(index_column)
+    df = pd.concat(dfl, axis=0)
+    if inde_column is not None:
+        df = df.set_index(index_column)
     return df
 
 
