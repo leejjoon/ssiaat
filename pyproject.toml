@@ -10,7 +10,7 @@ authors = [
 ]
 description = "SPHEREx Spectral Image as a Table"
 readme = "README.md"
-requires-python = ">=3.6"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -32,3 +32,6 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+ssiaat = ["ZodiScaling70Channels_0329/*.csv"]
