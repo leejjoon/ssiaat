@@ -113,10 +113,48 @@ class SpectralTable:
     def converter(self):
         return _get_converter(self._obj)
 
-    def make_simple_image(self, w1, w2, column="image"):
+    def make_simple_itable(self, w1, w2, column="image", agg="mean"):
+        """Aggregate `column` per pixel over the (w1, w2) wavelength window.
+
+        Returns an itable (Series with unique pixel index) carrying the
+        template metadata, so ``result.itable.to_image()`` works.
+        """
         dfc = self._obj.query(f"({w1} < wvl) and (wvl < {w2})")
-        s = dfc.groupby(by=dfc.index)[column].mean()
+        s = dfc.groupby(by=dfc.index)[column].agg(agg)
+        s.attrs["ssiaat_template_header"] = \
+            self._obj.attrs.get("ssiaat_template_header")
+        return s
+
+    def make_simple_image(self, w1, w2, column="image", agg="mean"):
+        """make_simple_itable rendered onto the template grid as an Image."""
+        s = self.make_simple_itable(w1, w2, column=column, agg=agg)
         return self.converter.itable_to_image(s)
+
+    def binned_spectrum(self, w1=None, w2=None, column="image", bins=50,
+                        agg="median"):
+        """Wavelength-binned aggregate spectrum of `column`.
+
+        Returns a Series indexed by bin-center wavelength (plot-ready:
+        ``stable.spectral.binned_spectrum().plot()``). `bins` is either
+        the number of equal-width bins over the (selected) wavelength
+        range, or an explicit array of bin edges.
+        """
+        df = self._obj
+        if w1 is not None or w2 is not None:
+            lo = w1 if w1 is not None else -np.inf
+            hi = w2 if w2 is not None else np.inf
+            df = df.query(f"({lo} < wvl) and (wvl < {hi})")
+
+        w = df["wvl"]
+        if np.isscalar(bins):
+            bins = np.linspace(w.min(), w.max(), bins)
+        else:
+            bins = np.asarray(bins)
+
+        values = df[column].groupby(pd.cut(w, bins), observed=False).agg(agg)
+        centers = 0.5 * (bins[1:] + bins[:-1])
+        return pd.Series(values.array, index=pd.Index(centers, name="wvl"),
+                         name=column)
 
     def filter_with_image_mask(self, msk):
         itable = self.converter.image_to_itable(msk)

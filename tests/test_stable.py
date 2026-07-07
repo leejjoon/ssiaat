@@ -138,6 +138,47 @@ def test_spectral_converter_reconstructed_from_attrs(stable_parquet):
     assert conv.tmpl_shape == TMPL_SHAPE
 
 
+def test_make_simple_itable(synthetic_stable):
+    itable = synthetic_stable.spectral.make_simple_itable(3.9, 4.2)
+    means = synthetic_stable.groupby(synthetic_stable.index)["image"].mean()
+    pd.testing.assert_series_equal(itable, means, check_names=False)
+
+    # metadata is carried, so the itable renders directly to an image
+    image = itable.itable.to_image()
+    assert image.shape == TMPL_SHAPE
+
+
+def test_make_simple_itable_agg(synthetic_stable):
+    med = synthetic_stable.spectral.make_simple_itable(3.9, 4.2, agg="median")
+    medians = synthetic_stable.groupby(synthetic_stable.index)["image"].median()
+    np.testing.assert_allclose(med.values, medians.values)
+    # line profile is skewed within each pixel: median != mean
+    mean = synthetic_stable.spectral.make_simple_itable(3.9, 4.2, agg="mean")
+    assert not np.allclose(med.values, mean.values)
+
+
+def test_binned_spectrum(synthetic_stable):
+    spec = synthetic_stable.spectral.binned_spectrum(bins=10)
+    assert isinstance(spec, pd.Series)
+    assert len(spec) == 9  # 10 edges -> 9 bins
+    assert spec.index.is_monotonic_increasing
+    assert spec.index.name == "wvl"
+
+    # a constant column bins to the constant, regardless of agg
+    stable = synthetic_stable.copy()
+    stable["flat"] = 7.0
+    for agg in ["median", "mean"]:
+        s = stable.spectral.binned_spectrum(column="flat", bins=5, agg=agg)
+        np.testing.assert_allclose(s.values, 7.0)
+
+
+def test_binned_spectrum_range(synthetic_stable):
+    w1, w2 = 4.0, 4.1
+    spec = synthetic_stable.spectral.binned_spectrum(w1, w2, bins=5)
+    assert spec.index.min() > w1
+    assert spec.index.max() < w2
+
+
 def test_make_simple_image(synthetic_stable):
     image = synthetic_stable.spectral.make_simple_image(3.9, 4.2)
     assert image.shape == TMPL_SHAPE
