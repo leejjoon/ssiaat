@@ -297,7 +297,7 @@ class BandpassTool:
         ix = np.zeros_like(iy) + 1024
 
         wvl, _ = self.bandpass_model(ix, iy, central_bandpass_only=True, array=band)
-        self.wvl_to_iy = interp1d(wwl, iy)
+        self.wvl_to_iy = interp1d(wvl, iy)
         
     def get_bp_at_wvl(self, center, as_knots=False):
         """
@@ -305,7 +305,7 @@ class BandpassTool:
         """
         iyy = self.wvl_to_iy(center)
 
-        w1, t1 = self.bandpaas_model(1024, iyy, array=self.band)
+        w1, t1 = self.bandpass_model(1024, iyy, array=self.band)
 
         if as_knots:
             return interp1d(w1, t1)
