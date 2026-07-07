@@ -87,7 +87,7 @@ def test_run_reproj_tasks_collects_results_and_failures(
 
     dfl, failures = asyncio.run(asyncio.wait_for(
         run_reproj_tasks([good, good, None, bad], template_wcs,
-                         num_tasks=2, progress=False),
+                         num_fetchers=2, num_workers=0, progress=False),
         TIMEOUT))
 
     assert len(dfl) == 2
@@ -99,3 +99,41 @@ def test_run_reproj_tasks_collects_results_and_failures(
     assert isinstance(exc, Exception)
 
     assert any("1 failed" in r.getMessage() for r in caplog.records)
+
+
+def test_run_reproj_tasks_process_pool(synthetic_l2_path, template_wcs,
+                                       tmp_path):
+    # Pooled run: same results as inline, bad URI still a failure, run
+    # completes under timeout.
+    good = f"file://{synthetic_l2_path}"
+    bad = f"file://{tmp_path}/does_not_exist.fits"
+
+    inline, _ = asyncio.run(asyncio.wait_for(
+        run_reproj_tasks([good], template_wcs, num_workers=0,
+                         progress=False),
+        TIMEOUT))
+    pooled, failures = asyncio.run(asyncio.wait_for(
+        run_reproj_tasks([good, good, bad], template_wcs, num_fetchers=2,
+                         num_workers=2, progress=False),
+        TIMEOUT))
+
+    assert len(pooled) == 2
+    assert len(failures) == 1
+    for df in pooled:
+        pd.testing.assert_frame_equal(
+            df.reset_index(drop=True), inline[0].reset_index(drop=True))
+
+
+def test_run_reproj_tasks_unpicklable_corrector(synthetic_l2_path,
+                                                template_wcs):
+    # A lambda corrector cannot cross the process boundary: it must land
+    # in failures (with the run completing), not hang or crash the run.
+    good = f"file://{synthetic_l2_path}"
+
+    dfl, failures = asyncio.run(asyncio.wait_for(
+        run_reproj_tasks([good], template_wcs, num_workers=2,
+                         progress=False, zodi_corrector=lambda z: z),
+        TIMEOUT))
+
+    assert dfl == []
+    assert len(failures) == 1
