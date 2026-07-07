@@ -85,7 +85,7 @@ class SpectralTable:
         conv = getattr(self._obj, "_ssiaat_converter", None)
         if conv is not None:
             return conv
-        
+
         # 2. Reconstruct from attrs if serialized/lost
         header_cards = self._obj.attrs.get("ssiaat_template_header")
         if header_cards:
@@ -179,6 +179,34 @@ class Image(np.ndarray):
         return self._ssiaat_converter.image_to_itable(self)
 
 
+def promote_to_stable(df, index_column="tmpl_ind", header=None,
+                      ignore_index_check=False):
+    """Turn an in-memory dataframe into a stable usable with the .spectral accessor.
+
+    Sets `index_column` as the index (unless it already is, or index_column
+    is None), checks that the index looks like a stable's (integer with
+    duplicates), and makes sure the template header metadata needed to
+    reconstruct the converter is available in df.attrs. Pass `header` (a
+    fits.Header) to attach the metadata to a dataframe that does not have it.
+    """
+    if index_column is not None and df.index.name != index_column:
+        df = df.set_index(index_column)
+
+    if not ignore_index_check and not check_index_stable(df):
+        raise ValueError("The dataframe's index is not integer or does not"
+                         " have duplicates, which is unusual for a stable."
+                         " If you are sure about the input, set"
+                         " `ignore_index_check` to True.")
+
+    if header is not None:
+        TemplateHeaderCards.from_header(header).update_dataframe(df)
+    elif df.attrs.get("ssiaat_template_header") is None:
+        raise ValueError("No template header metadata found in df.attrs, so"
+                         " the .spectral accessor will not be able to"
+                         " reconstruct the converter. Pass `header` to"
+                         " attach one.")
+
+    return df
 
 def read_stable(*fnlist, index_column=None, ignore_index_check=False):
     header_cards = None
@@ -187,14 +215,13 @@ def read_stable(*fnlist, index_column=None, ignore_index_check=False):
         df = pd.read_parquet(fn)
         dfl.append(df)
         header_cards_ = TemplateHeaderCards.from_dataframe(df)
-        if header_cards is not None and header_cards != header_cards:
+        if header_cards is not None and header_cards != header_cards_:
             raise ValueError("the input files have inconsistent metadata.")
         header_cards = header_cards_
 
     df = pd.concat(dfl, axis=0)
-    if index_column is not None:
-        df = df.set_index(index_column)
-    return df
+    return promote_to_stable(df, index_column=index_column,
+                             ignore_index_check=ignore_index_check)
 
 
 class SsiaatConverter:
@@ -239,27 +266,20 @@ class SsiaatConverter:
         for fn in fnlist:
             df = pd.read_parquet(fn)
             dfl.append(df)
-            header_cards_ = TemplateHeaderCards.get_from_dataframe(df)
-            if header_cards is not None and header_cards != header_cards:
+            header_cards_ = TemplateHeaderCards.from_dataframe(df)
+            if header_cards is not None and header_cards != header_cards_:
                 raise ValueError("the input files have inconsistent metadata.")
             header_cards = header_cards_
 
-        # dfl = [pd.read_parquet(fn) for fn in fnlist]
-        df = pd.concat(dfl, axis=0).set_index(index_column)
-        if not ignore_index_check and not check_index_stable(df):
-             raise ValueError("The input dataframe's index is no of integer of do"
-                             " not have duplicates which is unusual. If you are sure"
-                             "with the input, set `ignore_index_check` to True.")
+        df = pd.concat(dfl, axis=0)
+        # set the index, check it, and store the header cards in attrs
+        df = promote_to_stable(df, index_column=index_column,
+                               header=self.header,
+                               ignore_index_check=ignore_index_check)
 
         # Cache the live converter
         df._ssiaat_converter = self
-        
-        # Store serializable parts in attrs (standard FITS header cards)
-        SsiaatTemplateHeader.update_dataframe_from_header(df, self.header)
 
-        # s = self.header.tostring()
-        # df.attrs["ssiaat_template_header"] = [s[i:i+80] for i in range(0, len(s), 80)]
-        
         return df
 
 

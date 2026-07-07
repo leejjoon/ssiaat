@@ -87,6 +87,14 @@ class TemplateHeaderCards:
 
         return hash.hexdigest()
 
+    def __eq__(self, other):
+        if not isinstance(other, TemplateHeaderCards):
+            return NotImplemented
+        return self.hash == other.hash
+
+    def __hash__(self):
+        return hash(self.hash)
+
     @classmethod
     def from_header(cls, header):
         return cls([c.image for c in header.cards])
