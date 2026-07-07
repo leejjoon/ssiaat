@@ -30,6 +30,20 @@ dependencies = [
     "s3fs<=2025.3.0",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-asyncio",
+    "pyarrow",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = [
+    "slow: long-running tests (deselected by default)",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
