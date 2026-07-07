@@ -1,0 +1,72 @@
+"""AsyncCollector and the async bulk-reprojection runner.
+
+Written with plain asyncio.run so no pytest-asyncio plugin is needed. The
+timeout wrappers matter: before failures were caught inside the worker, a
+raising processor killed workers and the run deadlocked on queue.join().
+"""
+import asyncio
+
+import pytest
+
+from ssiaat.async_collector import AsyncCollector
+
+TIMEOUT = 10  # generous; a deadlock regression fails via TimeoutError
+
+
+async def _double(item):
+    await asyncio.sleep(0)
+    return 2 * item
+
+
+def test_collects_all_results():
+    collector = AsyncCollector(range(10), _double)
+    results = asyncio.run(asyncio.wait_for(collector.run(num_tasks=4), TIMEOUT))
+    assert sorted(results) == [2 * i for i in range(10)]
+    assert collector.failures == []
+
+
+def test_accepts_async_iterable():
+    async def agen():
+        for i in range(5):
+            yield i
+
+    async def run():
+        collector = AsyncCollector(agen(), _double, total=5)
+        return await asyncio.wait_for(collector.run(num_tasks=2), TIMEOUT)
+
+    assert sorted(asyncio.run(run())) == [0, 2, 4, 6, 8]
+
+
+def test_none_results_skipped():
+    async def keep_even(item):
+        return item if item % 2 == 0 else None
+
+    collector = AsyncCollector(range(10), keep_even)
+    results = asyncio.run(asyncio.wait_for(collector.run(num_tasks=3), TIMEOUT))
+    assert sorted(results) == [0, 2, 4, 6, 8]
+
+
+def test_failures_recorded_without_deadlock():
+    # 6 failing items with only 4 workers: under the old behavior every
+    # worker dies and queue.join() waits forever (TimeoutError here).
+    async def flaky(item):
+        await asyncio.sleep(0)
+        if item < 6:
+            raise ValueError(f"bad item {item}")
+        return item
+
+    collector = AsyncCollector(range(10), flaky)
+    results = asyncio.run(asyncio.wait_for(collector.run(num_tasks=4), TIMEOUT))
+
+    assert sorted(results) == [6, 7, 8, 9]
+    assert len(collector.failures) == 6
+    failed_items = sorted(item for item, _ in collector.failures)
+    assert failed_items == [0, 1, 2, 3, 4, 5]
+    assert all(isinstance(exc, ValueError) for _, exc in collector.failures)
+
+
+def test_progress_smoke():
+    collector = AsyncCollector(range(4), _double)
+    results = asyncio.run(
+        asyncio.wait_for(collector.run(num_tasks=2, progress=True), TIMEOUT))
+    assert len(results) == 4

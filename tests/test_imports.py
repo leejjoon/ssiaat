@@ -5,6 +5,7 @@ import pytest
 
 SUBMODULES = [
     "ssiaat",
+    "ssiaat.async_collector",
     "ssiaat.finder",
     "ssiaat.flags",
     "ssiaat.fs",
