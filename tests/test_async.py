@@ -6,11 +6,13 @@ raising processor killed workers and the run deadlocked on queue.join().
 """
 import asyncio
 
+import pandas as pd
 import pytest
 
 from ssiaat.async_collector import AsyncCollector
+from ssiaat.reproj_s3_async import run_reproj_tasks
 
-TIMEOUT = 10  # generous; a deadlock regression fails via TimeoutError
+TIMEOUT = 60  # generous; a deadlock regression fails via TimeoutError
 
 
 async def _double(item):
@@ -70,3 +72,30 @@ def test_progress_smoke():
     results = asyncio.run(
         asyncio.wait_for(collector.run(num_tasks=2, progress=True), TIMEOUT))
     assert len(results) == 4
+
+
+def test_run_reproj_tasks_collects_results_and_failures(
+        synthetic_l2_path, template_wcs, tmp_path, caplog):
+    # Two good exposures plus one missing file: the run must complete
+    # (bug-first: the old worker died on the error and queue.join() hung),
+    # return both DataFrames, and report the bad URI as a failure.
+    import logging
+    caplog.set_level(logging.INFO, logger="ssiaat.reproj_s3_async")
+
+    good = f"file://{synthetic_l2_path}"
+    bad = f"file://{tmp_path}/does_not_exist.fits"
+
+    dfl, failures = asyncio.run(asyncio.wait_for(
+        run_reproj_tasks([good, good, None, bad], template_wcs,
+                         num_tasks=2, progress=False),
+        TIMEOUT))
+
+    assert len(dfl) == 2
+    assert all(isinstance(df, pd.DataFrame) for df in dfl)
+
+    assert len(failures) == 1
+    failed_uri, exc = failures[0]
+    assert failed_uri == bad
+    assert isinstance(exc, Exception)
+
+    assert any("1 failed" in r.getMessage() for r in caplog.records)

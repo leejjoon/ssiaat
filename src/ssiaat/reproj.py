@@ -327,13 +327,14 @@ def read_uri(uri, **storage_options):
       raise e
 
 
-def get_df_from_uri(wcs_tmpl, uri, *, pbar=None, zodi_corrector=None):
-    aux_metadata = get_metadata_from_filename(uri)
+def get_df_from_buffer(buffer, wcs_tmpl, *, aux_metadata=None,
+                       zodi_corrector=None):
+    """Zodi-correct and reproject an in-memory L2 file onto wcs_tmpl.
 
-    buffer = read_uri(uri)
-    f = BytesIO(buffer)
-
-    hdul = fits.open(f)
+    The single shared implementation behind both the sync
+    (get_df_from_uri) and async (reproj_s3_async.run_reproj_tasks) paths.
+    """
+    hdul = fits.open(BytesIO(buffer))
 
     zodi = hdul["ZODI"].data
     if zodi_corrector is not None:
@@ -341,7 +342,15 @@ def get_df_from_uri(wcs_tmpl, uri, *, pbar=None, zodi_corrector=None):
 
     hdul["IMAGE"].data -= zodi
 
-    _df = get_df_from_hdul(hdul, wcs_tmpl, aux_metadata=aux_metadata)
+    return get_df_from_hdul(hdul, wcs_tmpl, aux_metadata=aux_metadata)
+
+
+def get_df_from_uri(wcs_tmpl, uri, *, pbar=None, zodi_corrector=None):
+    aux_metadata = get_metadata_from_filename(uri)
+
+    buffer = read_uri(uri)
+    _df = get_df_from_buffer(buffer, wcs_tmpl, aux_metadata=aux_metadata,
+                             zodi_corrector=zodi_corrector)
 
     if pbar is not None:
         pbar.update()
