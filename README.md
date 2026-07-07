@@ -78,5 +78,9 @@ normalized = stable["image"] / stable.spectral.broadcast(cont)
 - Bulk runs never abort on a bad file: `run_reproj_tasks` returns
   `(dataframes, failures)` where `failures` is a list of
   `(uri, exception)` pairs to retry.
+- Stables from `merge_to_stable` are sorted by `tmpl_ind`, so parquet
+  row-group statistics support cheap spatial-cutout reads. For very
+  large stables, consider `stable.to_parquet(fn, row_group_size=500_000)`
+  (forwarded to pyarrow) to keep row groups selective.
 - HiPS-tile output (`ssiaat.reproj_hips`) exists but is second-class for
   now; import it explicitly if needed.

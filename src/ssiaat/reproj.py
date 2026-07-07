@@ -371,7 +371,11 @@ def merge_to_stable(dflist, tmpl_wcs=None):
             header["NAXIS2"] = tmpl_wcs._naxis[0]
         master_cards = TemplateHeaderCards.from_header(header)
 
-    df = pd.concat(dflist, ignore_index=True).set_index("tmpl_ind")
+    # Sort by pixel index so parquet row-group min/max statistics make
+    # later spatial-cutout reads cheap (predicate pushdown on tmpl_ind).
+    df = (pd.concat(dflist, ignore_index=True)
+          .set_index("tmpl_ind")
+          .sort_index(kind="stable"))
 
     master_cards.update_dataframe(df)
 

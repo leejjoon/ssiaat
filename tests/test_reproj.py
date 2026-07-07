@@ -56,6 +56,8 @@ def test_merge_to_stable_and_simple_image(synthetic_l2_path, template_wcs):
 
     assert stable.index.name == "tmpl_ind"
     assert len(stable) == 2 * N_TMPL_PIX
+    # sorted on write so parquet row-group statistics enable cutout reads
+    assert stable.index.is_monotonic_increasing
     image = stable.spectral.make_simple_image(0.0, 10.0)
     assert image.shape == TMPL_SHAPE
     np.testing.assert_allclose(np.asarray(image), L2_SIGNAL, rtol=1e-5)
