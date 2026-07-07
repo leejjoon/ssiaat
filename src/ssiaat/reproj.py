@@ -372,7 +372,11 @@ def merge_to_stable(dflist, tmpl_wcs=None):
             raise RuntimeError("template header cards  are inconsistent.")
 
     else:
-        master_cards = TemplateHeaderCards.from_header(tmpl_wcs.to_header())
+        header = tmpl_wcs.to_header()
+        if "NAXIS1" not in header:
+            header["NAXIS1"] = tmpl_wcs._naxis[1]
+            header["NAXIS2"] = tmpl_wcs._naxis[0]
+        master_cards = TemplateHeaderCards.from_header(header)
 
     df = pd.concat(dflist, ignore_index=True).set_index("tmpl_ind")
 
