@@ -237,3 +237,11 @@ def get_cont_model(cw0, cw1, a=0.3):
     cont_models = [cont_left(cw0, cw_middle, a), cont_right(cw_middle, cw1, a)]
     return cont_models
 
+def get_pa_b():
+
+    d_shift2 = 0.004 # 012 - 0.002# somehow wavelength solutionseem to be off
+    a2 = 0.75 + 0.8# - 0.2
+    pa_b = hflattop(1.2693-d_shift2, 1.2988-d_shift2, a=a2) # a adjusted to fit the bandpss
+
+    # cw0, cw1 = 1.132, 1.432
+    return pa_b
