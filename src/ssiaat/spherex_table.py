@@ -388,7 +388,7 @@ from itertools import chain
 from .model.vectorized_lstsq import vectorized_lstsq_numpy
 
 class FitResults:
-    def __init__(self, idx, C, Cerr=None, *, model=None,
+    def __init__(self, idx, C, Cerr=None, *, model,
                  ssiaat_template_header=None):
         self.idx = idx
         self._C = C
@@ -414,6 +414,42 @@ class FitResults:
         self._Cerr = Cerr
         self.model = model
 
+    def _name_index(self, name):
+        try:
+            return self.model.all_model_names.index(name)
+        except ValueError:
+            raise KeyError(
+                f"unknown model name {name!r};"
+                f" available: {self.model.all_model_names}") from None
+
+    def coef(self, name):
+        """Coefficient Series (indexed by pixel) for the named model."""
+        i = self._name_index(name)
+        n = len(self.model.model_names)
+        return self.C[i] if i < n else self.contC[i - n]
+
+    def err(self, name):
+        """Coefficient-error Series for the named model."""
+        if self._Cerr is None:
+            raise ValueError("no errors available: run least_square_fit"
+                             " with return_error=True")
+        i = self._name_index(name)
+        n = len(self.model.model_names)
+        return self.Cerr[i] if i < n else self.contCerr[i - n]
+
+    def to_frame(self):
+        """All coefficients (and errors, when fitted) as a DataFrame with
+        named columns, indexed by pixel -- directly parquet-serializable."""
+        data = {name: self.coef(name) for name in self.model.all_model_names}
+        if self._Cerr is not None:
+            for name in self.model.all_model_names:
+                data[f"{name}_err"] = self.err(name)
+        return pd.DataFrame(data)
+
+    def image(self, name):
+        """Coefficient map of the named model rendered on the template."""
+        return self.coef(name).itable.to_image()
+
     def cont_sub(self, wvl, spec):
         # Using .reindex(wvl.index).values ensures we get a numpy array of the same length
         # as wvl, with values broadcasted to each duplicate index in the original order.
@@ -434,21 +470,33 @@ class FitResults:
 
 class Model:
     """
-    linear combination of models.
+    Linear combination of models (line models + continuum models).
+
+    Each of `models` and `cont_models` is either a list of callables of
+    wavelength (auto-named model0/model1/... and cmodel0/...) or a dict
+    mapping names to callables, e.g.::
+
+        Model({"br_a": get_br_a()}, {"cont": const()})
+
+    Coefficients can then be read back by name: fitted.coef("br_a").
     """
     def __init__(self, models, cont_models):
-        self.models = models
-        self.cont_models = cont_models
-
-        self.model_names = [self._get_model_name(i, m) for (i, m) in enumerate(models)]
-        self.cont_model_names = [self._get_cont_model_name(i, m) for (i, m) in enumerate(cont_models)]
+        self.model_names, self.models = self._normalize(models, "model")
+        self.cont_model_names, self.cont_models = self._normalize(cont_models,
+                                                                  "cmodel")
         self.all_model_names = self.model_names + self.cont_model_names
-    
-    def _get_model_name(self, i, m):
-        return f"model{i}"
 
-    def _get_cont_model_name(self, i, m):
-        return f"cmodel{i}"
+        if len(set(self.all_model_names)) != len(self.all_model_names):
+            raise ValueError("model names must be unique across models and"
+                             f" cont_models: {self.all_model_names}")
+
+    @staticmethod
+    def _normalize(models, prefix):
+        from collections.abc import Mapping
+        if isinstance(models, Mapping):
+            return list(models.keys()), list(models.values())
+        models = list(models)
+        return [f"{prefix}{i}" for i in range(len(models))], models
 
     def _populate_table_with_model_eval(self, stable, inplace=False):
         df = stable # stable is now a DataFrame
