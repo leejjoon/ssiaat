@@ -22,6 +22,7 @@ from astropy.coordinates import Galactic
 
 from .wcs_helper import TemplateHeaderCards
 from .tabular_bandpass_lite import Tabular_Bandpass_Lite
+from .indexing import make_pixel_index, get_src_yx, SRC_STRIDE
 
 #from spherex_utils.utils.mosaic_utils import get_flagval, DEFAULT_FLAGS
 from .flags import get_flagval, DEFAULT_FLAGS
@@ -141,8 +142,7 @@ def _convert_hdul_to_df(hdul, bandpass_model, band, metadata):
     # y, x = np.divmod(ind, 2048)
 
 
-    tmpl_ind = np.sum(np.indices(tmpl_shape) * np.array([tmpl_shape[-1], 1]).reshape((2, 1, 1)),
-                      axis=0, dtype="int32")
+    tmpl_ind = make_pixel_index(tmpl_shape)
 
     msk = np.isfinite(hdul[0].data)
     # src_y, src_x = np.divmod(hdul[2].data[msk], 2048)
@@ -175,18 +175,13 @@ class SphxReprojector:
         convert x,y indices of the input SPHEREx spectral image (which should be usually 2040x2040) to a single integer. For simplicity, we assume 2048x2048 shape.
         """
         (ny, nx) = input_image.shape
-        assert (ny <= 2048) and (nx <= 2048)
-        ind = np.sum(np.indices((ny, nx)) * np.array([2048, 1]).reshape((2, 1, 1)),
-                          axis=0, dtype="float32")
-        return ind
+        assert (ny <= SRC_STRIDE) and (nx <= SRC_STRIDE)
+        # float32 so the packed index survives reprojection
+        return make_pixel_index((ny, nx), stride=SRC_STRIDE, dtype="float32")
 
     @classmethod
     def get_src_yx(cls, ind_array):
-        # src_y, src_x = np.divmod(ind_array, 2048)
-        src_y = ind_array >> 11
-        src_x = ind_array & 2047
-
-        return src_y, src_x
+        return get_src_yx(ind_array)
 
     def __init__(self, input_hdul, *,
                  flags=None, aux_metadata=None,

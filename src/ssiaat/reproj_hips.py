@@ -21,6 +21,7 @@ from astropy.coordinates import Galactic
 
 from .reproj import ingest_hdul
 from .flags import DEFAULT_FLAGS
+from .indexing import make_pixel_index, SRC_STRIDE
 # from spherex_tabular_bandpass import Tabular_Bandpass
 from .tabular_bandpass_lite import Tabular_Bandpass_Lite
 
@@ -78,8 +79,8 @@ class SphxHpxProcess:
         self.nddata = np.array([nd.data for nd in nddata_list])
         self.wcs_in = WCS(hdul["IMAGE"].header)
 
-        self.ind = np.sum(np.indices(hdul["IMAGE"].data.shape) * np.array([2048, 1]).reshape((2, 1, 1)),
-                          axis=0, dtype="float32")
+        self.ind = make_pixel_index(hdul["IMAGE"].data.shape,
+                                    stride=SRC_STRIDE, dtype="float32")
 
         # self.bandpass_model = utils.mosaic_utils.PixelToCentralWavelengthUsingWCS()
         self.bandpass_model = (Tabular_Bandpass_Lite() if bandpass_model is None

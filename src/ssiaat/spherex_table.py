@@ -56,6 +56,7 @@ from astropy.io import fits
 # %%
 from pandas.api.types import is_integer_dtype
 from .wcs_helper import TemplateHeaderCards
+from .indexing import make_pixel_index
 
 def check_index_stable(df):
     """
@@ -301,9 +302,7 @@ class SsiaatConverter:
         self.tmpl_shape = (self.header['NAXIS2'], self.header['NAXIS1'])
 
         # 2d array for pixel indices
-        self.tmpl_ind = np.sum(np.indices(self.tmpl_shape)
-                               * np.array([self.tmpl_shape[-1], 1]).reshape((2, 1, 1)),
-                               axis=0, dtype="int32")
+        self.tmpl_ind = make_pixel_index(self.tmpl_shape)
         self.tmpl_ind_flat = np.ravel(self.tmpl_ind)
 
     @classmethod
