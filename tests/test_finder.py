@@ -3,10 +3,14 @@
 The version-selection tests run against a local fixture tree via fsspec's
 file:// protocol — no S3/network needed.
 """
+import asyncio
+import logging
+
 import pandas as pd
 import pytest
 
 from ssiaat.finder import (
+    _find_latest_single_async,
     _get_table_from_filenames,
     _parse_pipe_version,
     find_latest_uri,
@@ -75,10 +79,34 @@ def test_find_latest_uri_falls_back_to_existing_file(tmp_path):
     assert result.iloc[0].endswith(f"{BASE}_l2b-v19-2025-252.fits")
 
 
-def test_find_latest_uri_missing_plan_gives_none(tmp_path):
+def test_find_latest_uri_missing_plan_gives_none(tmp_path, caplog):
     (tmp_path / "qr2" / "level2").mkdir(parents=True)
-    result = find_latest_uri([FN], f"file://{tmp_path}")
+    with caplog.at_level(logging.WARNING, logger="ssiaat.finder"):
+        result = find_latest_uri([FN], f"file://{tmp_path}")
     assert result.iloc[0] is None
+    # a genuinely missing plan is "not found", not an error worth warning
+    assert not caplog.records
+
+
+def test_finder_warns_on_unexpected_errors(caplog):
+    # Errors other than "not found" (credentials, bad root, network) must
+    # not silently collapse into None.
+    class BrokenFS:
+        async def _ls(self, path, detail=False):
+            raise RuntimeError("simulated credentials error")
+
+    row = {"filename": FN, "plan": PLAN, "band": BAND}
+
+    async def run():
+        return await _find_latest_single_async(
+            row, BrokenFS(), "/root", "qr2", asyncio.Semaphore(1))
+
+    with caplog.at_level(logging.WARNING, logger="ssiaat.finder"):
+        result = asyncio.run(run())
+
+    assert result is None
+    assert any(FN in r.getMessage() and "credentials" in r.getMessage()
+               for r in caplog.records)
 
 
 def test_find_local_uri_prefers_numerically_latest(tmp_path):

@@ -14,6 +14,7 @@ The logic for finding the latest file follows these steps:
 """
 import pandas as pd
 from urllib.parse import urlparse
+import logging
 import os
 import asyncio
 import re
@@ -25,6 +26,8 @@ from .fs import register_fs
 
 # Register custom filesystems
 register_fs()
+
+logger = logging.getLogger(__name__)
 
 # Default concurrency limit
 MAX_CONCURRENT_TASKS = 20
@@ -143,7 +146,13 @@ async def _find_latest_single_async(row, fs, root_path, release, semaphore):
                 
                 if exists:
                     return file_path
-        except Exception:
+        except FileNotFoundError:
+            # plan directory absent: genuinely "not found", stay quiet
+            return None
+        except Exception as e:
+            # credentials, bad root URI, network, ... -- do not let these
+            # masquerade as "file not found"
+            logger.warning("finder failed for %s: %r", row["filename"], e)
             return None
     return None
 
