@@ -53,7 +53,7 @@ def ingest_hdul(hdulist: fits.HDUList, *,
 
     """
 
-    # This is stripped down version of ingest_hdul. It does not check overwrap with the target template so that
+    # This is stripped down version of ingest_hdul. It does not check overlap with the target template so that
     # it can be called without dependency on taget.
 
     ACTIVE_AREA_SHAPE = (2040, 2040)

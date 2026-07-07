@@ -17,6 +17,8 @@ SUBMODULES = [
     "ssiaat.tabular_bandpass_lite",
     "ssiaat.wcs_helper",
     "ssiaat.zodi_correction",
+    "ssiaat.model",
+    "ssiaat.model.fitting",
     "ssiaat.model.sed",
     "ssiaat.model.vectorized_lstsq",
 ]

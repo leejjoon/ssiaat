@@ -162,7 +162,7 @@ class SphxHpxProcess:
             # raise e
             return (e, None)
 
-        if hdul_out is None: # no overwrap
+        if hdul_out is None: # no overlap
             return ("no overlap", None)
         else:
             return  ("success", hdul_out)
@@ -177,7 +177,7 @@ class SphxHpxProcess:
                 processed.append((hid, "error in processing", e))
                 continue
 
-            if hdul_out is None: # no overwrap
+            if hdul_out is None: # no overlap
                 processed.append((hid, "no overlap", None))
                 continue
 
