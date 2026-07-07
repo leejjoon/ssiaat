@@ -32,3 +32,22 @@ def test_submodule_imports(module):
 def test_ingest_hdul_shared_not_duplicated():
     from ssiaat import reproj, reproj_hips
     assert reproj_hips.ingest_hdul is reproj.ingest_hdul
+
+
+def test_public_api_names_resolve():
+    import ssiaat
+    for name in ssiaat.__all__:
+        assert getattr(ssiaat, name) is not None
+
+
+def test_bare_import_registers_accessors():
+    # `import ssiaat` alone must be enough for df.spectral / s.itable.
+    import subprocess, sys
+    code = (
+        "import ssiaat, pandas as pd\n"
+        "df = pd.DataFrame({'a': [1.0, 2.0, 3.0]}, index=[0, 0, 1])\n"
+        "df.spectral\n"
+        "s = pd.Series([1.0], index=[0])\n"
+        "s.itable\n"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
