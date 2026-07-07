@@ -13,6 +13,16 @@ ENV/
 env.bak/
 venv.bak/
 
+# Data artifacts at repo root (analysis outputs; root-anchored so
+# src/ssiaat/ZodiScaling70Channels_0329/*.csv package data is unaffected)
+/*.fits
+/*.parquet
+/*.tgz
+/*.ecsv
+/*.csv
+/*.log
+.ipynb_checkpoints/
+
 # IDEs
 .idea/
 .vscode/
