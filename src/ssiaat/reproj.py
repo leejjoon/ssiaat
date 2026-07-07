@@ -34,7 +34,7 @@ def get_metadata_from_filename(fn):
     return dict(pipe_run=pipe_run)
 
 
-def _ingest_hdul(hdulist: fits.HDUList, *,
+def ingest_hdul(hdulist: fits.HDUList, *,
                 flags: Iterable[str] = DEFAULT_FLAGS,
                 process_variance: bool = True) -> bool | list:
     """Prepare given hdul and return ingested image data for mosaicking.
@@ -221,7 +221,7 @@ class SphxReprojector:
             self.metadata.update(aux_metadata)
 
         self.flags = DEFAULT_FLAGS if flags is None else flags
-        nddata_list = _ingest_hdul(input_hdul, flags=self.flags, process_variance=True)
+        nddata_list = ingest_hdul(input_hdul, flags=self.flags, process_variance=True)
         if isinstance(nddata_list, bool):
             raise RuntimeError()
 

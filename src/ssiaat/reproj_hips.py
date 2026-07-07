@@ -9,12 +9,7 @@ import numpy as np
 
 from astropy.io import fits
 from astropy.nddata import NDData
-from pandas.io.gbq import find_stack_level
 
-from spherex_utils import utils
-
-import boto3
-from botocore.exceptions import ClientError
 import logging
 import os
 
@@ -23,107 +18,11 @@ from reproject.hips.utils import tile_header
 
 from astropy.wcs import WCS
 from astropy.coordinates import Galactic
-from spherex_utils.utils.mosaic_utils import get_flagval, DEFAULT_FLAGS
 
+from .reproj import ingest_hdul
+from .flags import DEFAULT_FLAGS
 # from spherex_tabular_bandpass import Tabular_Bandpass
-from .tabular_bandpass_lite import Tabular_Bandpass_lite
-
-def ingest_hdul(hdulist: fits.HDUList, *,
-                flags: Iterable[str] = DEFAULT_FLAGS,
-                process_variance: bool = True) -> bool | list:
-    """Prepare given hdul and return ingested image data for mosaicking.
-
-    Parameters
-    ----------
-    hdul: HDList
-        fits HDUlist object.
-
-    Returns
-    -------
-    list | bool
-        list of nddata if successful. True is check_only is true and everything is okay. False for any issue.
-
-    """
-
-    # This is stripped down version of ingest_hdul. It does not check overwrap with the target template so that
-    # it can be called without dependency on taget.
-
-    ACTIVE_AREA_SHAPE = (2040, 2040)
-
-    flag = get_flagval(*flags)
-
-    # Check the argument and get image, WCS, and metadata from it
-    input_image = hdulist.filename()
-
-    # Get HDU of spectral image
-    if hdulist[0].data is not None:
-        image_hdu = hdulist[0]
-    elif "IMAGE" in hdulist:
-        image_hdu = hdulist["IMAGE"]
-    else:
-        msg = f"failed to find an HDU of image data from '{input_image}'"
-        raise ValueError(msg)
-
-    # Check presence of "L2DQAFLG" keyword in the image HDU
-    # If not present, the FITS file is not of the Level-2 spectral image and
-    # we stop and return False.
-    image_hdr = image_hdu.header
-    if "L2DQAFLG" not in image_hdr:
-        msg = "Input image is not Level-2 spectral image"
-        raise ValueError(msg)
-
-    # Check presence of "FLAGS" extension
-    if "FLAGS" not in hdulist:
-        msg = f"failed to find 'FLAGS' extension from '{input_image}'"
-        raise ValueError(msg)
-
-    # Check presence of "VARIANCE" extension
-    if process_variance and "VARIANCE" not in hdulist:
-        msg = f"failed to find 'VARIANCE' extension from '{input_image}'"
-        raise ValueError(msg)
-
-    # Get values from image HDU header
-    det_id = image_hdr["DETECTOR"]
-    image_wcs = WCS(header=image_hdr)
-
-    # Load data required
-    image = image_hdu.data
-    flag_image = hdulist["FLAGS"].data
-
-    # Check image shapes
-    if not (
-        image.shape
-        == flag_image.shape
-        == image_wcs.array_shape
-        == ACTIVE_AREA_SHAPE
-    ):
-        msg = "inconsistent shapes of input images"
-        raise ValueError(msg)
-
-    if process_variance:
-        var_img = hdulist["VARIANCE"].data
-        # Check image shapes including variance
-        if var_img.shape != ACTIVE_AREA_SHAPE:
-            msg = "inconsistent shape of variance image"
-            raise ValueError(msg)
-
-    spch_image_wcs = image_wcs # [self.image_slice]
-
-    mask = flag_image & flag
-    spch_image = np.ma.masked_array(
-        data=image, mask=mask,
-    ).filled(np.nan)
-
-    nddata_list = [NDData(spch_image, wcs=spch_image_wcs)]
-
-    if process_variance:
-        spch_var_image = np.ma.masked_array(
-            data=var_img, mask=mask,
-        ).filled(np.nan)
-        nddata_list.append(NDData(spch_var_image, wcs=spch_image_wcs))
-
-    return nddata_list
-
+from .tabular_bandpass_lite import Tabular_Bandpass_Lite
 
 def reproject_to_hips_tile(array_in, wcs_in, header_out,
                            reproject_function=reproject_adaptive, **kwargs):
@@ -171,7 +70,7 @@ class SphxHpxProcess:
         else:
             raise ValueError()
 
-        self.flags = utils.mosaic_utils.DEFAULT_FLAGS if flags is None else flags
+        self.flags = DEFAULT_FLAGS if flags is None else flags
         nddata_list = ingest_hdul(hdul, flags=self.flags, process_variance=True)
         if isinstance(nddata_list, bool):
             raise RuntimeError()
