@@ -40,9 +40,13 @@ def cont_model():
 
 
 @pytest.fixture(scope="session")
-def template_header():
-    wcs = get_wcs_from_shape(150.0 * u.deg, 2.0 * u.deg, TMPL_SHAPE)
-    header = wcs.to_header()
+def template_wcs():
+    return get_wcs_from_shape(150.0 * u.deg, 2.0 * u.deg, TMPL_SHAPE)
+
+
+@pytest.fixture(scope="session")
+def template_header(template_wcs):
+    header = template_wcs.to_header()
     # WCS.to_header() carries no NAXIS* cards, but SsiaatConverter needs
     # them (same injection as reproj.merge_to_stable).
     header["NAXIS1"] = TMPL_SHAPE[1]
@@ -83,4 +87,46 @@ def synthetic_stable(template_header, line_model, cont_model):
 def stable_parquet(synthetic_stable, tmp_path):
     fn = tmp_path / "stable.parquet"
     synthetic_stable.to_parquet(fn)
+    return fn
+
+
+# --- synthetic SPHEREx L2 exposure -----------------------------------------
+
+L2_SHAPE = (2040, 2040)
+L2_SIGNAL = 2.0   # constant sky signal after zodi subtraction
+L2_ZODI = 1.0     # constant zodi level baked into IMAGE
+L2_BAND = 1
+L2_FILENAME = "level2_2025W24_1A_0405_1D1_spx_l2b-v19-2025-252.fits"
+
+
+@pytest.fixture(scope="session")
+def synthetic_l2_path(tmp_path_factory):
+    """A minimal but structurally valid L2 file on disk.
+
+    Layout required by ingest_hdul / SphxReprojector: IMAGE must be HDU
+    index 1 (SphxReprojector reads hdul[1].header for EXPIDN/DETECTOR and
+    hdul["IMAGE"] by name), with FLAGS/VARIANCE/ZODI extensions and the
+    L2DQAFLG keyword. Same sky center as template_header, so the 16x16
+    template falls entirely inside the detector footprint.
+    """
+    from astropy.io import fits
+
+    wcs_in = get_wcs_from_shape(150.0 * u.deg, 2.0 * u.deg, L2_SHAPE)
+    header = wcs_in.to_header()
+    header["DETECTOR"] = L2_BAND
+    header["EXPIDN"] = 12345
+    header["L2DQAFLG"] = 0
+
+    image = np.full(L2_SHAPE, L2_SIGNAL + L2_ZODI, dtype="float32")
+    hdul = fits.HDUList([
+        fits.PrimaryHDU(),
+        fits.ImageHDU(data=image, header=header, name="IMAGE"),
+        fits.ImageHDU(data=np.zeros(L2_SHAPE, dtype="int32"), name="FLAGS"),
+        fits.ImageHDU(data=np.ones(L2_SHAPE, dtype="float32"), name="VARIANCE"),
+        fits.ImageHDU(data=np.full(L2_SHAPE, L2_ZODI, dtype="float32"),
+                      name="ZODI"),
+    ])
+
+    fn = tmp_path_factory.mktemp("l2") / L2_FILENAME
+    hdul.writeto(fn)
     return fn
