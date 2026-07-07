@@ -61,14 +61,3 @@ class Tabular_Bandpass_Lite:
 
         return wavelength, transmission
 
-def test():
-    from spherex_tabular_bandpass import Tabular_Bandpass
-    tb = Tabular_Bandpass()
-    tblite = Tabular_Bandpass_Lite()
-    
-    iy, ix = np.indices((2040, 2040))
-
-    for band in range(1, 7):
-        w_orig, _ = tb(ix, iy, array=band, central_bandpass_only=True)
-        w_lite, _ = tblite(ix, iy, array=band, central_bandpass_only=True)
-        assert np.allclose(w_orig - w_lite, 0)

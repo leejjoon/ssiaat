@@ -236,35 +236,3 @@ def check_uri(df: pd.DataFrame, root_uri: str, progress: bool = False, storage_o
         tqdm.pandas(desc="Checking URIs")
         return df["uri"].progress_apply(_check_single)
     return df["uri"].apply(_check_single)
-
-
-def test_s3():
-
-    async def find_files(root_uri, filenames, release="qr2", progress=True):
-
-        # using the async implementation behind the scenes
-        latest_uris = await find_latest_uri_async(filenames, root_uri, release=release, progress=progress, max_concurrency=30)
-
-        results = pd.DataFrame({
-            'filename': filenames,
-            'uri_decorated': latest_uris
-        })
-
-        return results
-
-
-    root_uri = "s3://nasa-irsa-spherex"
-    # #root_uri = "webfsd://100.103.128.7:3000"
-
-    filenames = ['level2_2025W24_1A_0405_1D1_spx_l2b-v19-2025-252.fits',
-                 'level2_2025W24_1A_0405_2D1_spx_l2b-v19-2025-252.fits',
-                 'level2_2025W24_1A_0405_3D1_spx_l2b-v19-2025-252.fits',
-                 ]
-
-    import asyncio
-    results = asyncio.run(find_files(root_uri, filenames, release="qr2"))
-    print(len(results))
-
-
-if __name__ == '__main__':
-    test_s3()
