@@ -426,3 +426,51 @@ inline examples turned into pytest tests as they are touched (1.4, 3.8, 5.1
 all create natural test material). No API-compatibility shims needed — the
 package is pre-1.0 and the only known consumers are the local scripts, which
 can be updated in the same commits.
+
+---
+
+## Decision log (grilling session, 2026-07-07)
+
+Decisions confirmed with the author; these amend or pin down the items above.
+
+1. **Scope:** full plan, steps 0–6.
+2. **CI (new item):** add a minimal GitHub Actions workflow in Phase 0 — one
+   job, one Python version, `pip install -e .[test]` + `pytest -m "not slow"`
+   on every push. No matrix, no coverage tooling.
+3. **Test cadence:** §0.4 step 1 safety net lands as the first commit; after
+   that, *every* plan item's commit must include its tests ("opportunistic"
+   is upgraded to mandatory per commit).
+4. **1.4 amended:** `BandpassTool` is **kept**, not deleted — fix the two
+   typos (`wwl`→`wvl`, `bandpaas_model`) and add a smoke test.
+5. **reproj_hips stays second-class:** do §1.3 + §4.2 (imports fixed,
+   `ingest_hdul` deduped, import-smoke test); no top-level export, full
+   cleanup deferred until the next HiPS production run.
+6. **2.1 failure contract:** bulk runs never raise on per-item errors —
+   complete the run, return results plus a `failures: list[(uri, exception)]`,
+   log a loud end-of-run summary. No automatic retry.
+7. **AsyncCollector contract:** exception-catching lives *inside*
+   `AsyncCollector._worker` (append `(item, exc)` to `self.failures`, worker
+   survives) so deadlock is structurally impossible for every consumer.
+   AsyncCollector becomes public API, exported from the top level.
+8. **2.3 as planned:** sync `find_latest_uri` raises with clear
+   "use `await find_latest_uri_async(...)`" guidance inside a running loop;
+   no nest_asyncio, no worker-thread magic.
+9. **Naming stays:** stable/itable vocabulary and `promote_to_stable` kept;
+   README glossary is the fix.
+10. **3.5 fit API:** dict-based named models + `coef(name)`/`err(name)`/
+    `to_frame()`, `model` required — and `.C`/`.contC` arrays remain public
+    so existing scripts keep working.
+11. **3.6 pins:** Colab is still a target — keep the fsspec/s3fs
+    `<=2025.3.0` pins with a dated explanatory comment; drop boto3/botocore/
+    aioboto3 (verified: only commented-out code in reproj_hips touches them);
+    add scipy, pyarrow, numpy.
+12. **5.1:** `vectorized_lstsq_chunked` becomes a thin wrapper and survives
+    one real analysis cycle on full-scale data before deletion.
+13. **5.4 as planned:** full fetch→ProcessPoolExecutor pipeline,
+    `num_fetchers`/`num_workers` exposed, defaults (4, `cpu_count()-1`).
+14. **Git workflow:** commits straight to `main`, one per plan item (or tight
+    series), pushed at step boundaries so CI validates each step.
+15. **Root hygiene (new item, Phase 0):** add `.gitignore` patterns for data
+    artifacts (`*.fits`, `*.parquet`, `*.tgz`, `*.ecsv`, root `*.csv`, logs,
+    `.ipynb_checkpoints/`); analysis scripts and notebooks stay untracked and
+    untouched.
