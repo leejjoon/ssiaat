@@ -7,14 +7,22 @@ examples, and the untracked analysis scripts (`cygx_spec.py`, `fit_ice.py`,
 The package is pre-1.0 and API compatibility is not a constraint. Focus areas:
 correctness bugs first, then robustness, user experience, and performance.
 
+> **Status (2026-07-07): COMPLETE.** All phases (0–5) landed on `main`
+> (106 tests, CI green). Per-item marks below; see the Decision log and
+> Progress log at the bottom for amendments and details. Deferred items:
+> delete the deprecated `vectorized_lstsq_chunked` wrapper after one
+> full-scale analysis cycle; promote `reproj_hips` (and fold MAKEHIPS.md
+> into docs) at the next HiPS production run; revisit the Colab
+> fsspec/s3fs pins when Colab updates.
+
 ---
 
-## Phase 0 — Test suite (prerequisite for verifying every fix below)
+## Phase 0 — Test suite (prerequisite for verifying every fix below) — ✅ done
 
 There are currently no tests. Almost everything is testable with *synthetic*
 data — no real SPHEREx files needed except for optional validation tests.
 
-### 0.1 Three kinds of tests
+### 0.1 Three kinds of tests — ✅
 1. **Known-answer tests** (highest value): build a tiny template (16×16 WCS
    via `get_wcs`), synthesize a stable in memory (`tmpl_ind` with duplicates,
    `wvl` grid, `image = 2.0*model_a(wvl) + 0.5*cont(wvl) + noise`) and assert
@@ -34,7 +42,7 @@ data — no real SPHEREx files needed except for optional validation tests.
      failure instead of hanging (fails today);
    - `get_df_from_uri` without pbar (NameError today).
 
-### 0.2 Testing the awkward parts without a network
+### 0.2 Testing the awkward parts without a network — ✅
 - **finder/fsspec**: no S3 mocking — point `find_latest_uri` at a `tmp_path`
   local directory with the real `level2/{plan}/{pipe_ver}/{band}/{file}`
   layout built from empty files (fsspec `file://`; `memory://` for the pure
@@ -52,7 +60,7 @@ data — no real SPHEREx files needed except for optional validation tests.
   `spherex_tabular_bandpass` as `skipif(not installed)`; add an unconditional
   test pinning a few hardcoded known wavelengths per band.
 
-### 0.3 Layout
+### 0.3 Layout — ✅ (as `tests/`; `test/` was gitignored)
 ```
 tests/
   conftest.py            # fixtures: template_wcs, template_header, synthetic_stable,
@@ -72,7 +80,7 @@ tests/
 "pytest-asyncio"]` and a `slow` marker (`pytest -m "not slow"` as the fast
 default, well under a minute).
 
-### 0.4 Order of work
+### 0.4 Order of work — ✅
 1. `conftest.py` fixtures + converter round-trip + lstsq known-answer +
    parquet attrs round-trip — the safety net required before Phase 5.
 2. Bug-first tests for 1.1/1.2, 2.1, 1.5 — then fix each.
@@ -85,9 +93,9 @@ so it doesn't get "simplified" away later.
 
 ---
 
-## Phase 1 — Correctness bugs (small, high impact; do first)
+## Phase 1 — Correctness bugs (small, high impact; do first) — ✅ done
 
-### 1.1 Pipeline-version sorting is lexical, so `v9` beats `v20`
+### 1.1 Pipeline-version sorting is lexical, so `v9` beats `v20` — ✅
 - **Where:** `src/ssiaat/finder.py:126` (`pipe_vers.sort(reverse=True)`).
 - **Problem:** Versions are compared as strings; `'l2b-v9-...' > 'l2b-v20-...'`.
   As soon as single- and double-digit versions coexist in a plan directory,
@@ -96,14 +104,14 @@ so it doesn't get "simplified" away later.
   helper (regex `l2b-v(\d+)-(\d+)-(\d+)`) and sort with it as the key.
   Use the same helper everywhere versions are ordered.
 
-### 1.2 `find_local_uri` returns the *oldest* version
+### 1.2 `find_local_uri` returns the *oldest* version — ✅
 - **Where:** `src/ssiaat/finder.py:84-93`.
 - **Problem:** Candidates are sorted ascending and the first existing file is
   returned — the opposite of "find latest".
 - **Fix:** Reuse the key from 1.1 with `reverse=True`. Add a small unit test
   with a fake directory tree covering v9/v19/v20.
 
-### 1.3 `reproj_hips.py` cannot be imported at all (verified)
+### 1.3 `reproj_hips.py` cannot be imported at all (verified) — ✅
 - **Where:** `src/ssiaat/reproj_hips.py:12,14,26,29`.
 - **Problems:**
   - `from .tabular_bandpass_lite import Tabular_Bandpass_lite` — wrong case;
@@ -117,18 +125,18 @@ so it doesn't get "simplified" away later.
   instead of `spherex_utils`. Delete the ~130-line duplicated copy of
   `ingest_hdul` in this file (see 4.2).
 
-### 1.4 `BandpassTool` has never run
+### 1.4 `BandpassTool` has never run — ✅ (amended: kept & repaired, not deleted)
 - **Where:** `src/ssiaat/spherex_table.py:291-313`.
 - **Problems:** `wwl` undefined (should be `wvl`) at line 300;
   `self.bandpaas_model` typo at line 308.
 - **Fix:** Fix both typos and add a smoke test — or, if it is not used
   anywhere, remove the class (preferred until it is actually needed).
 
-### 1.5 `get_df_from_uri` crashes when no progress bar is passed
+### 1.5 `get_df_from_uri` crashes when no progress bar is passed — ✅ (downgraded: crash was already fixed; print → logging)
 - **Where:** `src/ssiaat/reproj.py:360` (`print(fn)`; variable is `uri`).
 - **Fix:** `print(uri)` — or better, drop the print and use `logging.info`.
 
-### 1.6 Dead code with undefined names
+### 1.6 Dead code with undefined names — ✅
 - **Where:**
   - `reproj.py:133` `check_overwrapp()` — references `self` at module level.
   - `finder.py:103` `get_local_path` — calls nonexistent `get_readpath`.
@@ -142,9 +150,9 @@ so it doesn't get "simplified" away later.
 
 ---
 
-## Phase 2 — Robustness of the network/async layer
+## Phase 2 — Robustness of the network/async layer — ✅ done
 
-### 2.1 A single bad file deadlocks the async reprojection run
+### 2.1 A single bad file deadlocks the async reprojection run — ✅
 - **Where:** `src/ssiaat/reproj_s3_async.py:62-69` (`ProjectorRunner.worker_s3`).
 - **Problem:** If `get_df_from_uri` raises (corrupt FITS, missing ZODI
   extension, network error), the worker task dies before `task_done()`;
@@ -161,7 +169,7 @@ so it doesn't get "simplified" away later.
   5. Remove the hardcoded `uri = f"s3://{uri}"` and `anon=True`; take full URIs
      and pass `storage_options` through.
 
-### 2.2 Silent exception swallowing in the finder
+### 2.2 Silent exception swallowing in the finder — ✅
 - **Where:** `src/ssiaat/finder.py:142` (`except Exception: return None`).
 - **Problem:** Credentials errors, bad root URIs, and genuinely missing files
   all collapse into "not found".
@@ -169,7 +177,7 @@ so it doesn't get "simplified" away later.
   at minimum; preferably return a per-file status (`found` / `missing` /
   `error(exc)`) so `find_latest_uri` can report the three cases separately.
 
-### 2.3 `find_latest_uri` sync wrapper breaks in Jupyter
+### 2.3 `find_latest_uri` sync wrapper breaks in Jupyter — ✅
 - **Where:** `src/ssiaat/finder.py:170-180`.
 - **Problem:** `loop.run_until_complete` raises
   `RuntimeError: This event loop is already running` inside notebooks — and
@@ -183,9 +191,9 @@ so it doesn't get "simplified" away later.
 
 ---
 
-## Phase 3 — User experience
+## Phase 3 — User experience — ✅ done
 
-### 3.1 Make `import ssiaat` enough (biggest UX win)
+### 3.1 Make `import ssiaat` enough (biggest UX win) — ✅
 - **Problem:** Users must know internal module paths
   (`from ssiaat.spherex_table import read_stable`), and the `.spectral` /
   `.itable` accessors are only registered if `ssiaat.spherex_table` happens to
@@ -203,7 +211,7 @@ so it doesn't get "simplified" away later.
   ```
   Keep `reproj_hips` out of the top level (heavier deps) until it is cleaned up.
 
-### 3.2 Unify the two `read_stable`s and accept lists
+### 3.2 Unify the two `read_stable`s and accept lists — ✅
 - **Where:** `spherex_table.py:211` (module-level, `index_column=None`) vs
   `spherex_table.py:263` (`SsiaatConverter.read_stable`,
   `index_column="tmpl_ind"`).
@@ -219,7 +227,7 @@ so it doesn't get "simplified" away later.
     the index is already `tmpl_ind`).
   - Add `columns=` and `wvl_range=` pass-through (see 5.3).
 
-### 3.3 Add the accessor helpers that scripts keep rewriting
+### 3.3 Add the accessor helpers that scripts keep rewriting — ✅
 Evidence from the untracked analysis scripts:
 - `cygx_spec.py:16-17` re-implements `make_simple_image` by hand because it
   needs the itable (groupby-mean Series), not the image.
@@ -235,7 +243,7 @@ Evidence from the untracked analysis scripts:
 - Document `spectral.broadcast` with a recipe replacing the
   `join(..., rsuffix="_cont")` dance in the README.
 
-### 3.4 `converter` returning None causes confusing downstream crashes
+### 3.4 `converter` returning None causes confusing downstream crashes — ✅ (raises ValueError)
 - **Where:** `spherex_table.py:83-99,137-152`.
 - **Problem:** When header metadata is missing, `.converter` silently returns
   None; the user then hits `AttributeError: 'NoneType' object has no attribute
@@ -244,7 +252,7 @@ Evidence from the untracked analysis scripts:
   message already used by `promote_to_stable` ("no template header metadata in
   df.attrs; run promote_to_stable(df, header=...)").
 
-### 3.5 `FitResults` / `Model` ergonomics
+### 3.5 `FitResults` / `Model` ergonomics — ✅ (.C/.contC kept)
 - **Problems:** Coefficients are positional (`fitted.C[0]`, `fitted.contC[1]`);
   model names are auto-generated (`model0`, `cmodel0`); `FitResults.__init__`
   defaults `model=None` then dereferences it unconditionally.
@@ -258,7 +266,7 @@ Evidence from the untracked analysis scripts:
   - Optional convenience: `FitResults.image(name)` → itable → Image using the
     stored template header.
 
-### 3.6 Fix declared dependencies
+### 3.6 Fix declared dependencies — ✅
 - **Where:** `pyproject.toml`.
 - **Missing:** `scipy` (used in `spherex_table.py`, `zodi_correction.py`),
   `pyarrow` (every parquet read/write), `numpy` (explicit).
@@ -267,7 +275,7 @@ Evidence from the untracked analysis scripts:
 - Re-check `fsspec`/`s3fs` `<=2025.3.0` pins (colab workaround) — keep but add
   a comment with the reason and a date to revisit.
 
-### 3.7 README quickstart for the actual pipeline
+### 3.7 README quickstart for the actual pipeline — ✅ (MAKEHIPS folding deferred with reproj_hips)
 - **Problem:** README currently documents three scripts that are not in the
   repo. The real end-to-end flow is undocumented:
   `query_overlapping` → `find_latest_uri` → `SphxReprojector` /
@@ -283,7 +291,7 @@ Evidence from the untracked analysis scripts:
     newcomer; a two-line definition removes the confusion.
   - Fold `MAKEHIPS.md` into the docs (or `docs/`) once `reproj_hips` imports.
 
-### 3.8 Move demo/test code out of library modules
+### 3.8 Move demo/test code out of library modules — ✅
 - **Where:** `spherex_table.py:443-558` (`get_test_model`, `test_save`,
   `test_load`, `main` — ~120 of 558 lines, hardcoded local filenames,
   `pyregion` import), `reproj.py:388-405` (`main`), `finder.py:219-248`
@@ -293,7 +301,7 @@ Evidence from the untracked analysis scripts:
   `tests/` directory runnable with pytest (they already contain usable inline
   data).
 
-### 3.9 Small polish
+### 3.9 Small polish — ✅
 - `ImageTable.to_image` docstring says "Converts the image back to its tabular
   form" — copy-paste; it is the reverse direction.
 - "overwrap" → "overlap" everywhere (comments, messages, `check_overwrapp`).
@@ -305,9 +313,9 @@ Evidence from the untracked analysis scripts:
 
 ---
 
-## Phase 4 — Code de-duplication
+## Phase 4 — Code de-duplication — ✅ done
 
-### 4.1 Pixel-index computation exists in 4+ places
+### 4.1 Pixel-index computation exists in 4+ places — ✅ (ssiaat.indexing)
 - **Where:** `SsiaatConverter.__init__`, `_convert_hdul_to_df`,
   `SphxReprojector.get_ind_image`, `reproj_hips.SphxHpxProcess.__init__`
   (and re-derived by hand in user scripts, e.g. `fit_ice.py:38`).
@@ -317,22 +325,22 @@ Evidence from the untracked analysis scripts:
   source indices. Keep `get_src_yx` (bit-shift decode) next to it, and name
   the two index kinds distinctly (`tmpl_ind` vs `src_ind`) in docstrings.
 
-### 4.2 `ingest_hdul` duplicated verbatim
+### 4.2 `ingest_hdul` duplicated verbatim — ✅
 - **Where:** `reproj.py:_ingest_hdul` and `reproj_hips.py:ingest_hdul`
   (~130 identical lines).
 - **Fix:** Keep one in `reproj.py` (make it public: `ingest_hdul`), import it
   from `reproj_hips.py`.
 
-### 4.3 `get_wcs` / `get_wcs_from_shape` near-duplicates
+### 4.3 `get_wcs` / `get_wcs_from_shape` near-duplicates — ✅
 - **Where:** `wcs_helper.py:9-71`.
 - **Fix:** Single `get_wcs(lon, lat, side=None, side2=None, shape=None, ...)`
   where exactly one of `side` / `shape` must be given; shared body.
 
 ---
 
-## Phase 5 — Performance
+## Phase 5 — Performance — ✅ done
 
-### 5.1 `vectorized_lstsq_numpy`: avoid giant float64 intermediates
+### 5.1 `vectorized_lstsq_numpy`: avoid giant float64 intermediates — ✅ (chunked = deprecated wrapper; deletion deferred)
 - **Where:** `src/ssiaat/model/vectorized_lstsq.py:23-39`.
 - **Problem:** For M total models it materializes M(M+1)/2 + M full-length
   product Series (upcast to float64), then a DataFrame, then a pandas
@@ -354,7 +362,7 @@ Evidence from the untracked analysis scripts:
 - **Expected:** ~5–10× faster aggregation, near-constant memory; chunking no
   longer needed.
 
-### 5.2 `Model._populate_table_with_model_eval` duplicates the largest columns
+### 5.2 `Model._populate_table_with_model_eval` duplicates the largest columns — ✅
 - **Where:** `spherex_table.py:393-412`.
 - **Problem:** The non-inplace path copies `wvl`, `image`, `variance` into a
   second full-length DataFrame just so the fitter can find them by name.
@@ -364,7 +372,7 @@ Evidence from the untracked analysis scripts:
   DataFrame round-trip disappears; combined with 5.1 the fit is one pure-numpy
   pass over the table.
 
-### 5.3 Push filters down into parquet reads
+### 5.3 Push filters down into parquet reads — ✅
 - **Where:** `read_stable` + every analysis script's immediate
   `stable.query("(w1 < wvl) and (wvl < w2)")`.
 - **Fix:** In the unified `read_stable` (3.2):
@@ -378,7 +386,7 @@ Evidence from the untracked analysis scripts:
 - **Expected:** Large cuts in I/O and peak memory for band files that span
   wavelengths beyond the analysis window.
 
-### 5.4 Parallelize reprojection on the right axis (CPU, not I/O)
+### 5.4 Parallelize reprojection on the right axis (CPU, not I/O) — ✅
 - **Where:** `reproj_s3_async.py`; `reproj.py:262-266`.
 - **Problem:** `reproject_adaptive` is CPU-bound; asyncio workers serialize on
   the GIL (the module docstring itself notes the speedup is "not
@@ -397,7 +405,7 @@ Evidence from the untracked analysis scripts:
 - **Expected:** near-linear scaling with cores for the bulk-reprojection step,
   which is the slowest part of the whole pipeline.
 
-### 5.5 Minor
+### 5.5 Minor — ✅
 - `finder._get_table_from_filenames`: replace four `.apply(lambda)` passes
   with vectorized `.str` operations (only matters for very long file lists).
 - `_ingest_hdul`: `hdulist[0].data is not None` forces a full data load just
@@ -411,15 +419,15 @@ Evidence from the untracked analysis scripts:
 
 ## Suggested execution order
 
-| Step | Items | Rationale |
-|------|-------|-----------|
-| 0 | 0.1–0.4 (core fixtures + safety-net tests) | Everything below is verified against these |
-| 1 | 1.1–1.6 | Correctness; 1.1/1.2 silently select wrong data versions |
-| 2 | 2.1–2.3 | The network step is the slowest and currently fails opaquely |
-| 3 | 3.1, 3.2, 3.6 | One import, one `read_stable`, installable package |
-| 4 | 3.3–3.5, 3.7–3.9, 4.1–4.3 | UX + structure cleanup (enables docs) |
-| 5 | 5.1–5.3 | Memory is the binding constraint per README notes |
-| 6 | 5.4, 5.5 | Throughput of bulk reprocessing |
+| Step | Items | Rationale | Status |
+|------|-------|-----------|--------|
+| 0 | 0.1–0.4 (core fixtures + safety-net tests) | Everything below is verified against these | ✅ done |
+| 1 | 1.1–1.6 | Correctness; 1.1/1.2 silently select wrong data versions | ✅ done |
+| 2 | 2.1–2.3 | The network step is the slowest and currently fails opaquely | ✅ done |
+| 3 | 3.1, 3.2, 3.6 | One import, one `read_stable`, installable package | ✅ done |
+| 4 | 3.3–3.5, 3.7–3.9, 4.1–4.3 | UX + structure cleanup (enables docs) | ✅ done |
+| 5 | 5.1–5.3 | Memory is the binding constraint per README notes | ✅ done |
+| 6 | 5.4, 5.5 | Throughput of bulk reprocessing | ✅ done |
 
 Each step should land as its own commit (or small series), with the moved
 inline examples turned into pytest tests as they are touched (1.4, 3.8, 5.1
