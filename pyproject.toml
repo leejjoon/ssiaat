@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "ssiaat"
 version = "0.0.1"
 authors = [
-  { name="Jae-Joon Lee", email="lee.j.joon@google.com" },
+  { name="Jae-Joon Lee", email="leejjoon@kasi.re.kr" },
 ]
 description = "SPHEREx Spectral Image as a Table"
 readme = "README.md"
@@ -19,13 +19,15 @@ classifiers = [
 dependencies = [
     "astropy",
     "reproject",
+    "numpy",
     "pandas",
-    "boto3",
-    "botocore",
+    "pyarrow",
+    "scipy",
     "requests",
     "tqdm",
-    "aioboto3",
     "aiohttp",
+    # Upper pins work around a Google Colab incompatibility (2026-07).
+    # Revisit when Colab updates; s3 access goes through s3fs, not boto3.
     "fsspec[http]<=2025.3.0",
     "s3fs<=2025.3.0",
 ]
