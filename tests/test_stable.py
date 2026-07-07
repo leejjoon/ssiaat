@@ -83,6 +83,33 @@ def test_read_stable_single_and_concat(synthetic_stable, stable_parquet):
     assert len(stable2) == 2 * len(synthetic_stable)
 
 
+def test_read_stable_accepts_list(stable_parquet):
+    # Scripts pass a single list; varargs and list forms must agree.
+    from_list = read_stable([stable_parquet, stable_parquet])
+    from_varargs = read_stable(stable_parquet, stable_parquet)
+    pd.testing.assert_frame_equal(from_list, from_varargs)
+
+
+def test_read_stable_columns(stable_parquet):
+    stable = read_stable(stable_parquet, columns=["wvl", "image"])
+    assert list(stable.columns) == ["wvl", "image"]
+    assert stable.index.name == "tmpl_ind"
+
+
+def test_read_stable_wvl_range(synthetic_stable, stable_parquet):
+    w1, w2 = 4.0, 4.1
+    stable = read_stable(stable_parquet, wvl_range=(w1, w2))
+    expected = synthetic_stable.query("(@w1 < wvl) and (wvl < @w2)")
+    assert len(stable) == len(expected)
+    assert stable["wvl"].between(w1, w2, inclusive="neither").all()
+
+
+def test_converter_raises_without_metadata():
+    df = pd.DataFrame({"image": [1.0, 2.0, 3.0]}, index=[0, 0, 1])
+    with pytest.raises(ValueError, match="promote_to_stable"):
+        df.spectral.converter
+
+
 def test_read_stable_rejects_mismatched_headers(stable_parquet, tmp_path,
                                                 template_header):
     other_header = template_header.copy()

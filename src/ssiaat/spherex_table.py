@@ -72,6 +72,36 @@ def check_index_itable(df):
     return is_integer_dtype(df.index.dtype) and not df.index.has_duplicates
 
 
+def _get_converter(obj):
+    """Return the converter of a stable/itable pandas object.
+
+    Uses the cached live instance when present, otherwise reconstructs one
+    from the template header cards in ``obj.attrs`` (and caches it).
+    Raises with an actionable message instead of returning None -- a None
+    here only surfaces later as a confusing AttributeError deep inside
+    itable_to_image.
+    """
+    conv = getattr(obj, "_ssiaat_converter", None)
+    if conv is not None:
+        return conv
+
+    header_cards = obj.attrs.get("ssiaat_template_header")
+    if header_cards:
+        header = fits.Header.fromstring("".join(header_cards))
+        conv = SsiaatConverter(header)
+        # Cache it as a private attribute for subsequent fast access
+        try:
+            obj._ssiaat_converter = conv
+        except Exception:
+            pass
+        return conv
+
+    raise ValueError(
+        "no template header metadata in .attrs, so the converter cannot"
+        " be reconstructed. Run promote_to_stable(df, header=...) or read"
+        " the data via SsiaatConverter.read_stable(...).")
+
+
 @pd.api.extensions.register_dataframe_accessor("spectral")
 class SpectralTable:
     def __init__(self, pandas_obj):
@@ -81,22 +111,7 @@ class SpectralTable:
 
     @property
     def converter(self):
-        # 1. Try to get the live converter instance from private attribute
-        conv = getattr(self._obj, "_ssiaat_converter", None)
-        if conv is not None:
-            return conv
-
-        # 2. Reconstruct from attrs if serialized/lost
-        header_cards = self._obj.attrs.get("ssiaat_template_header")
-        if header_cards:
-            header = fits.Header.fromstring("".join(header_cards))
-            conv = SsiaatConverter(header)
-            # Cache it as a private attribute for subsequent fast access
-            try:
-                self._obj._ssiaat_converter = conv
-            except Exception: pass
-            return conv
-        return None
+        return _get_converter(self._obj)
 
     def make_simple_image(self, w1, w2, column="image"):
         dfc = self._obj.query(f"({w1} < wvl) and (wvl < {w2})")
@@ -135,21 +150,7 @@ class ImageTable:
 
     @property
     def converter(self):
-        # 1. Try to get live converter
-        conv = getattr(self._obj, "_ssiaat_converter", None)
-        if conv is not None:
-            return conv
-        
-        # 2. Reconstruct from attrs
-        header_cards = self._obj.attrs.get("ssiaat_template_header")
-        if header_cards:
-            header = fits.Header.fromstring("".join(header_cards))
-            conv = SsiaatConverter(header)
-            try:
-                self._obj._ssiaat_converter = conv
-            except Exception: pass
-            return conv
-        return None
+        return _get_converter(self._obj)
 
     def to_image(self):
         """Converts the image back to its tabular form using its converter."""
@@ -208,11 +209,43 @@ def promote_to_stable(df, index_column="tmpl_ind", header=None,
 
     return df
 
-def read_stable(*fnlist, index_column=None, ignore_index_check=False):
+def read_stable(*fnlist, index_column="tmpl_ind", header=None,
+                columns=None, wvl_range=None, ignore_index_check=False):
+    """Read one or more parquet stables and concatenate them.
+
+    Accepts either varargs or a single list:
+    ``read_stable("a.parquet", "b.parquet")`` and
+    ``read_stable(["a.parquet", "b.parquet"])`` are equivalent.
+
+    Parameters
+    ----------
+    index_column : str or None
+        Column to promote to the index (skipped when the parquet index is
+        already named so).
+    header : fits.Header, optional
+        Template header to (re)attach; without it the parquet files must
+        already carry the template metadata in their attrs.
+    columns : list of str, optional
+        Read only these columns (pyarrow column pruning). Most analyses
+        never need src_x/src_y.
+    wvl_range : (float, float), optional
+        Read only rows with w1 < wvl < w2 (pyarrow predicate pushdown --
+        much cheaper than reading everything and calling .query).
+    """
+    if len(fnlist) == 1 and isinstance(fnlist[0], (list, tuple)):
+        fnlist = fnlist[0]
+
+    read_kwargs = {}
+    if columns is not None:
+        read_kwargs["columns"] = columns
+    if wvl_range is not None:
+        w1, w2 = wvl_range
+        read_kwargs["filters"] = [("wvl", ">", w1), ("wvl", "<", w2)]
+
     header_cards = None
     dfl = []
     for fn in fnlist:
-        df = pd.read_parquet(fn)
+        df = pd.read_parquet(fn, **read_kwargs)
         dfl.append(df)
         header_cards_ = TemplateHeaderCards.from_dataframe(df)
         if header_cards is not None and header_cards != header_cards_:
@@ -220,7 +253,7 @@ def read_stable(*fnlist, index_column=None, ignore_index_check=False):
         header_cards = header_cards_
 
     df = pd.concat(dfl, axis=0)
-    return promote_to_stable(df, index_column=index_column,
+    return promote_to_stable(df, index_column=index_column, header=header,
                              ignore_index_check=ignore_index_check)
 
 
@@ -260,26 +293,15 @@ class SsiaatConverter:
 
         return itable
 
-    def read_stable(self, *fnlist, index_column="tmpl_ind", ignore_index_check=False):
-        header_cards = None
-        dfl = []
-        for fn in fnlist:
-            df = pd.read_parquet(fn)
-            dfl.append(df)
-            header_cards_ = TemplateHeaderCards.from_dataframe(df)
-            if header_cards is not None and header_cards != header_cards_:
-                raise ValueError("the input files have inconsistent metadata.")
-            header_cards = header_cards_
-
-        df = pd.concat(dfl, axis=0)
-        # set the index, check it, and store the header cards in attrs
-        df = promote_to_stable(df, index_column=index_column,
-                               header=self.header,
-                               ignore_index_check=ignore_index_check)
-
-        # Cache the live converter
+    def read_stable(self, *fnlist, index_column="tmpl_ind", columns=None,
+                    wvl_range=None, ignore_index_check=False):
+        """Like the module-level read_stable, with this converter's header
+        attached and the live converter cached on the result."""
+        df = read_stable(*fnlist, index_column=index_column,
+                         header=self.header, columns=columns,
+                         wvl_range=wvl_range,
+                         ignore_index_check=ignore_index_check)
         df._ssiaat_converter = self
-
         return df
 
 
