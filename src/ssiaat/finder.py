@@ -61,20 +61,21 @@ def _get_table_from_filenames(filenames):
     # Example: level2_2025W48_1A_0516_2D6_spx_l2b-v20-2025-335.fits
     _root = unique_filenames.str.split(".fits").str[0]
     split = _root.str.split("_")
-    
-    plan = split.apply(lambda s: f"{s[1]}_{s[2]}")
-    pointing = split.apply(lambda s: s[3])
+
+    plan = split.str[1] + "_" + split.str[2]
+    pointing = split.str[3]
     # split[4] is e.g. '2D6'
-    step = split.apply(lambda s: s[4][0])
-    band = split.apply(lambda s: s[4][-1])
-    pipeline_run = split.apply(lambda s: s[6])
-    
+    step_band = split.str[4]
+    step = step_band.str[0]
+    band = step_band.str[-1]
+    pipeline_run = split.str[6]
+
     return pd.DataFrame(dict(
-        filename=unique_filenames, 
-        plan=plan, 
-        pointing=pointing, 
-        step=step, 
-        band=band, 
+        filename=unique_filenames,
+        plan=plan,
+        pointing=pointing,
+        step=step,
+        band=band,
         pipeline_run=pipeline_run
     ))
 

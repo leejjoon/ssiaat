@@ -313,9 +313,20 @@ class SsiaatConverter:
 
     def itable_to_image(self, itable: pd.Series, ignore_index_name=False):
         # itable should be a series whose index is a subset of tmpl_ind.
-        im_ = itable.reindex(self.tmpl_ind_flat).array.reshape(self.tmpl_shape)
-        im = Image(im_, ssiaat_converter=self)
+        # tmpl_ind_flat is arange(n), so index values ARE flat positions:
+        # preallocate + assign beats reindexing over the full template
+        # (several x at HiPS scales).
+        n = self.tmpl_shape[0] * self.tmpl_shape[1]
+        out = np.full(n, np.nan)
+        out[itable.index.to_numpy()] = itable.to_numpy(dtype="float64")
+        im = Image(out.reshape(self.tmpl_shape), ssiaat_converter=self)
         return im
+
+    def _itable_to_image_reindex(self, itable: pd.Series):
+        # Reference implementation of itable_to_image (kept for
+        # correctness comparison in tests).
+        im_ = itable.reindex(self.tmpl_ind_flat).array.reshape(self.tmpl_shape)
+        return Image(im_, ssiaat_converter=self)
 
     def image_to_itable(self, image: Image | np.ndarray,
                         mask: None | Image | np.ndarray = None):

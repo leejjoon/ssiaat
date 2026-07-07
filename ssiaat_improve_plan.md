@@ -546,3 +546,30 @@ Decisions confirmed with the author; these amend or pin down the items above.
   - 3.1: full top-level API in `ssiaat/__init__.py` (incl.
     AsyncCollector); bare `import ssiaat` registers accessors.
   - 3.7: README rewritten (glossary, quickstart, broadcast recipe).
+- **2026-07-07 — Phase 5 done** (5.1, 5.2, 5.3 write-side, 5.4, 5.5,
+  6 commits). **The improvement plan is complete**, with one deferred
+  item: `vectorized_lstsq_chunked` (now a deprecated delegating wrapper)
+  is deleted after one real full-scale analysis cycle confirms the
+  bincount core.
+  - 5.1: factorize+bincount lstsq core (`vectorized_lstsq_arrays`);
+    DataFrame API kept as wrapper. Benchmark (5M rows, 4 models, 50k
+    groups, weighted, float64): 2.1× faster, 7.3× lower peak memory
+    (1.24 GB → 169 MB), results identical at rtol 1e-9. Regression pin,
+    lstsq-reference, and chunked==unchunked tests all held. Note:
+    float32 inputs now accumulate in float64 (slightly more precise than
+    the old implementation).
+  - 5.2: `Model.least_square_fit` evaluates models into arrays and calls
+    the core directly — no full-length DataFrame copy;
+    `_populate_table_with_model_eval` kept for manual use.
+  - 5.3 write-side: `merge_to_stable` sorts by `tmpl_ind`;
+    `row_group_size` documented in README.
+  - 5.4: `run_reproj_tasks(num_fetchers, num_workers)` — async fetch
+    feeding a ProcessPoolExecutor (default cpu_count()−1, forkserver
+    context, spawn fallback); `num_workers=0` = inline debug mode;
+    unpicklable zodi_corrector (lambda) surfaces as a per-URI failure
+    with `functools.partial` documented as the fix; `num_tasks`
+    deprecated alias. `process_single` exposes `**reproject_kwargs`
+    (5.4.4), unlocking reproject's own block-parallel mode.
+  - 5.5: vectorized `.str` filename parsing in the finder; header-based
+    (NAXIS) presence check in `ingest_hdul`; preallocate+assign
+    `itable_to_image` with the reindex form kept as a tested reference.

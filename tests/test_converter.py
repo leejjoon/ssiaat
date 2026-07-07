@@ -72,6 +72,19 @@ def test_big_endian_input_converted_to_native(converter):
     np.testing.assert_array_equal(itable.values, np.ravel(image).astype(float))
 
 
+def test_itable_to_image_matches_reindex_reference(converter):
+    rng = np.random.default_rng(1)
+    full = pd.Series(rng.normal(size=NY * NX), index=converter.tmpl_ind_flat)
+    partial = full.iloc[[0, 3, 17, 100, 255]]
+    with_nan = full.copy()
+    with_nan.iloc[5] = np.nan
+
+    for itable in [full, partial, with_nan]:
+        fast = converter.itable_to_image(itable)
+        ref = converter._itable_to_image_reindex(itable)
+        np.testing.assert_array_equal(np.asarray(fast), np.asarray(ref))
+
+
 def test_image_slice_keeps_converter(converter):
     image = converter.itable_to_image(pd.Series([1.0], index=[0]))
     sub = image[2:5, 1:4]

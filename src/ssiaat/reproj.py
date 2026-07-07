@@ -64,8 +64,9 @@ def ingest_hdul(hdulist: fits.HDUList, *,
     # Check the argument and get image, WCS, and metadata from it
     input_image = hdulist.filename()
 
-    # Get HDU of spectral image
-    if hdulist[0].data is not None:
+    # Get HDU of spectral image. Check the header, not `.data is not None`,
+    # which would force a full lazy-load of the array just to test presence.
+    if hdulist[0].header.get("NAXIS", 0) > 0:
         image_hdu = hdulist[0]
     elif "IMAGE" in hdulist:
         image_hdu = hdulist["IMAGE"]
