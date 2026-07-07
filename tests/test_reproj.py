@@ -41,6 +41,21 @@ def test_get_df_from_uri(synthetic_l2_path, template_wcs):
     assert df.attrs["ssiaat_template_header"]
 
 
+def test_process_single_reproject_kwargs(synthetic_l2_path, template_wcs):
+    # Extra kwargs flow through to reproject_adaptive; the constant field
+    # must survive a different kernel setting unchanged.
+    from astropy.io import fits
+    from ssiaat.reproj import SphxReprojector, get_metadata_from_filename
+
+    with fits.open(synthetic_l2_path) as hdul:
+        hdul["IMAGE"].data -= hdul["ZODI"].data
+        reprojector = SphxReprojector(
+            hdul, aux_metadata=get_metadata_from_filename(synthetic_l2_path))
+        out = reprojector.process_single(template_wcs, kernel="gaussian")
+
+    np.testing.assert_allclose(out[0].data, L2_SIGNAL, rtol=1e-5)
+
+
 def test_get_df_from_uri_zodi_corrector(synthetic_l2_path, template_wcs):
     # Doubling the zodi (1.0 -> 2.0) leaves 3.0 - 2.0 = 1.0 of signal.
     df = get_df_from_uri(template_wcs, f"file://{synthetic_l2_path}",

@@ -219,7 +219,14 @@ class SphxReprojector:
         self.bandpass_model = (Tabular_Bandpass_Lite() if bandpass_model is None
                                else bandpass_model)
 
-    def process_single(self, output_wcs_tmpl):
+    def process_single(self, output_wcs_tmpl, **reproject_kwargs):
+        """Reproject this exposure onto output_wcs_tmpl.
+
+        Extra keyword arguments are forwarded to reproject_adaptive
+        (e.g. parallel=True for reproject's block-parallel mode on a
+        single large template), overriding the defaults
+        bad_value_mode="ignore", parallel=False.
+        """
 
         # # mosaic = utils.SpectralChannelMosaic(
         # mosaic = utils.WavelengthRangeMosaic(
@@ -243,10 +250,11 @@ class SphxReprojector:
         #     processed.append((hid, "empty", ""))
         #     continue
 
+        adaptive_kwargs = dict(bad_value_mode="ignore", parallel=False)
+        adaptive_kwargs.update(reproject_kwargs)
         array_out, footprint = reproject_adaptive((self.nddata, self.wcs_in), wcs_tmpl,
                                                   shape_out=shape_out,
-                                                  bad_value_mode="ignore",
-                                                  parallel=False,
+                                                  **adaptive_kwargs,
                                                   )
         if np.all(footprint == 0):
             return None
