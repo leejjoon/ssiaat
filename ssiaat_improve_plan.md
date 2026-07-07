@@ -499,3 +499,24 @@ Decisions confirmed with the author; these amend or pin down the items above.
   - 1.6: `check_overwrapp`, `get_local_path`, `check_weeks` deleted (TODO
     note kept in query.py); demo blocks moved from spherex_table.py to
     `examples/fit_eso_244_demo.py` with the `sed` import fixed.
+- **2026-07-07 — Phase 2 done** (2.1–2.3 + §0.2 fixture, 5 commits):
+  - 2.1: `AsyncCollector` moved into the package with catch-in-worker
+    failure handling (deadlock structurally impossible; `.failures` holds
+    `(item, exc)` pairs). `reproj_s3_async` rebuilt on it:
+    `run_reproj_tasks(uri_list, wcs_tmpl, *, num_tasks, progress,
+    storage_options, zodi_corrector) -> (dfl, failures)`; full URIs, no
+    hardcoded `s3://`/`anon=True` (s3 keeps anon as default only when no
+    storage_options given); zodi correction now matches the sync path via
+    the shared `reproj.get_df_from_buffer`. `ProjectorRunner` and
+    `run_s3_repoj_tasks` deleted (no live callers; §5.4.3 rename done
+    early). Top-level export of AsyncCollector lands with §3.1.
+  - §0.2: synthetic 2040×2040 L2 fixture (IMAGE at HDU 1 + FLAGS/VARIANCE/
+    ZODI, constant field) + end-to-end tests: `get_df_from_uri` over
+    `file://` (zodi, columns, metadata, corrector callable) and
+    `merge_to_stable` → `make_simple_image` reproducing the constant.
+    Fast (~1.5 s), so not marked slow. Also closes the 1.5 coverage gap.
+  - 2.2: finder logs a warning on unexpected errors (missing plan dir
+    stays a quiet None) instead of swallowing everything.
+  - 2.3: sync `find_latest_uri` uses `asyncio.run` when no loop runs and
+    raises with "use `await find_latest_uri_async(...)`" inside Jupyter;
+    deprecated `get_event_loop` gone.

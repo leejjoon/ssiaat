@@ -180,17 +180,26 @@ async def find_latest_uri_async(filenames, root_uri, release="qr2", progress: bo
     return pd.Series(results, index=df.index)
 
 
-def find_latest_uri(filenames, root_uri, release="qr2", progress: bool = False, 
-                    max_concurrency: int = MAX_CONCURRENT_TASKS, 
+def find_latest_uri(filenames, root_uri, release="qr2", progress: bool = False,
+                    max_concurrency: int = MAX_CONCURRENT_TASKS,
                     storage_options: dict = None):
-    """Synchronous wrapper for find_latest_uri_async."""
+    """Synchronous wrapper for find_latest_uri_async.
+
+    Only usable where no event loop is running. Inside Jupyter/IPython
+    (which runs its own loop) call the async variant directly instead:
+
+        result = await find_latest_uri_async(filenames, root_uri, ...)
+    """
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed(): raise RuntimeError
+        asyncio.get_running_loop()
     except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(find_latest_uri_async(filenames, root_uri, release, progress, max_concurrency, storage_options))
+        return asyncio.run(find_latest_uri_async(
+            filenames, root_uri, release, progress, max_concurrency,
+            storage_options))
+    raise RuntimeError(
+        "find_latest_uri() cannot be used while an event loop is running"
+        " (e.g. inside Jupyter/IPython)."
+        " Use: await find_latest_uri_async(...)")
 
 
 async def get_uri_updated_dataframe(df_query, release, root_uri=None):

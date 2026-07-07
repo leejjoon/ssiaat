@@ -109,6 +109,16 @@ def test_finder_warns_on_unexpected_errors(caplog):
                for r in caplog.records)
 
 
+def test_find_latest_uri_raises_inside_running_loop():
+    # Jupyter runs its own event loop; the sync wrapper must fail with
+    # instructions rather than a cryptic "loop is already running".
+    async def call_sync_wrapper():
+        find_latest_uri([FN], "file:///nowhere")
+
+    with pytest.raises(RuntimeError, match="find_latest_uri_async"):
+        asyncio.run(call_sync_wrapper())
+
+
 def test_find_local_uri_prefers_numerically_latest(tmp_path):
     # find_local_uri uses a repo layout without the {release} segment.
     for ver in VERSIONS:
