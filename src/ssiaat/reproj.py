@@ -132,19 +132,6 @@ def ingest_hdul(hdulist: fits.HDUList, *,
 
     return nddata_list
 
-def check_overwrapp():
-    # FIXME this is copied from ingest_image function. It need to be fixed.
-    # Check whether the spectral channel image overlaps the coadd WCS
-    if not wcs_overlapped(
-        self.coadd_wcs, spch_image_wcs, mask=self.mask_sliced,
-    ):
-        self._logger.warning(
-            "Spectral channel of '%s' does not overlap the target region.",
-            input_image,
-        )
-        return False
-
-
 def _convert_hdul_to_df(hdul, bandpass_model, band, metadata):
     tmpl_shape = hdul[0].data.shape
 

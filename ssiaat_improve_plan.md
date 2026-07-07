@@ -474,3 +474,28 @@ Decisions confirmed with the author; these amend or pin down the items above.
     artifacts (`*.fits`, `*.parquet`, `*.tgz`, `*.ecsv`, root `*.csv`, logs,
     `.ipynb_checkpoints/`); analysis scripts and notebooks stay untracked and
     untouched.
+
+---
+
+## Progress log
+
+- **2026-07-07 — Phase 0 done** (5 commits): gitignore for root data
+  artifacts; test extra + pytest config; tests/ safety net (23 tests:
+  converter round-trips, attrs-through-parquet, lstsq known-answer +
+  regression pin + chunked==unchunked); GitHub Actions CI (green).
+- **2026-07-07 — Phase 1 done** (1.1–1.6 + 4.2, 5 commits):
+  - 1.1/1.2: `_parse_pipe_version` numeric sort key in both finders,
+    bug-first tests against a local `file://` tree; `find_local_uri`
+    gained a `rootdir=` kwarg for testability.
+  - 1.3/4.2: `reproj_hips` imports fixed (gbq/spherex_utils/boto3 gone,
+    Tabular_Bandpass_Lite case fixed); duplicated `ingest_hdul` deleted,
+    now imported from `reproj` (made public there).
+  - 1.4 (amended: kept): `BandpassTool` typos fixed + smoke tests. Note:
+    `get_bp_at_wvl` requires a full bandpass model; the Lite model only
+    supports the `central_bandpass_only=True` path used by `__init__`.
+  - 1.5 (downgraded): the `print(fn)` NameError had already been fixed in
+    c2b0bcb; replaced `print(uri)` with `logging`. End-to-end coverage of
+    `get_df_from_uri` lands with the Phase 2 synthetic-L2 fixture.
+  - 1.6: `check_overwrapp`, `get_local_path`, `check_weeks` deleted (TODO
+    note kept in query.py); demo blocks moved from spherex_table.py to
+    `examples/fit_eso_244_demo.py` with the `sed` import fixed.
