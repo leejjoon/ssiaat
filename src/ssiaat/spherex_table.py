@@ -107,6 +107,25 @@ class SpectralTable:
         itable = self.converter.image_to_itable(msk)
         return self._obj.loc[itable]
 
+    def broadcast(self, values):
+        """Align per-pixel values onto this table's (pixel x wavelength) rows.
+
+        Parameters
+        ----------
+        values : pd.Series or np.ndarray
+            Per-pixel values, either an itable (series with unique integer
+            index) or a 2d image of the template shape.
+
+        Returns
+        -------
+        pd.Series aligned row-by-row with the table, so it can be used in
+        arithmetic with the table's columns, e.g.
+        ``df["image"] - df.spectral.broadcast(cont)``.
+        """
+        if isinstance(values, np.ndarray):
+            values = self.converter.image_to_itable(values)
+        return values.reindex(self._obj.index)
+
 @pd.api.extensions.register_series_accessor("itable")
 class ImageTable:
     def __init__(self, pandas_obj):
@@ -203,7 +222,11 @@ class SsiaatConverter:
 
     def image_to_itable(self, image: Image | np.ndarray,
                         mask: None | Image | np.ndarray = None):
-        itable = pd.Series(np.ravel(image), index=self.tmpl_ind_flat)
+        data = np.ravel(image)
+        if not data.dtype.isnative:
+            # FITS data is big-endian; pandas requires native byte order
+            data = data.astype(data.dtype.newbyteorder("="))
+        itable = pd.Series(data, index=self.tmpl_ind_flat)
         if mask is not None:
             itable_msk = pd.Series(np.ravel(mask), index=self.tmpl_ind_flat)
             itable = itable[itable_msk]
