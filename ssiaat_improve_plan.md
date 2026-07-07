@@ -520,3 +520,29 @@ Decisions confirmed with the author; these amend or pin down the items above.
   - 2.3: sync `find_latest_uri` uses `asyncio.run` when no loop runs and
     raises with "use `await find_latest_uri_async(...)`" inside Jupyter;
     deprecated `get_event_loop` gone.
+- **2026-07-07 — Phase 3 done** (3.1–3.9 + 4.1 + 4.3, 9 commits):
+  - 3.6: deps fixed (+numpy/pyarrow/scipy, −boto3/botocore/aioboto3,
+    dated comment on the Colab pins).
+  - 3.2 (+5.3 read side, landed early): one `read_stable`
+    (index_column="tmpl_ind" everywhere) accepting list or varargs, with
+    `columns=` and `wvl_range=` pyarrow pushdown; converter method
+    delegates. 3.4: `.converter` raises with an actionable message
+    instead of returning None.
+  - 3.3: `make_simple_itable` (metadata-carrying), `agg=` on
+    `make_simple_image`, `binned_spectrum` (absorbs scripts'
+    `median_spec`).
+  - 3.5: Model accepts name dicts; FitResults gains
+    coef/err/to_frame/image; `.C/.contC` positional access unchanged;
+    `model` now required keyword.
+  - 3.9: Model/FitResults moved to `ssiaat.model.fitting` (re-exported
+    from spherex_table); docstring fixes; overwrap→overlap.
+  - 4.1: `ssiaat.indexing.make_pixel_index`/`get_src_yx` replace 4
+    inline copies (template stride vs detector 2048-stride documented).
+  - 4.3: single `get_wcs` body (`side=` or `shape=`);
+    `get_wcs_from_shape` delegates.
+  - 3.8: reproj/query demos → examples/; finder.test_s3 and
+    vectorized_lstsq.example deleted; bandpass-lite comparison became
+    tests/test_bandpass_lite.py with pinned wavelengths.
+  - 3.1: full top-level API in `ssiaat/__init__.py` (incl.
+    AsyncCollector); bare `import ssiaat` registers accessors.
+  - 3.7: README rewritten (glossary, quickstart, broadcast recipe).
