@@ -76,6 +76,31 @@ def test_regression_pin():
     np.testing.assert_allclose(coeffs, EXAMPLE_PINNED_COEFFS, rtol=1e-7)
 
 
+def test_large_synthetic_matches_reference():
+    # 200k rows / 4k groups: catches accumulation/indexing bugs the
+    # 75-row CSV can't. Deterministic (seeded), unweighted.
+    rng = np.random.default_rng(42)
+    n_rows, n_groups = 200_000, 4_000
+    df = pd.DataFrame({
+        "g": rng.integers(0, n_groups, n_rows),
+        "m0": rng.normal(size=n_rows),
+        "m1": rng.normal(size=n_rows),
+        "m2": np.ones(n_rows),
+    })
+    df["image"] = 1.5 * df["m0"] - 0.5 * df["m1"] + 3.0 + \
+        0.01 * rng.normal(size=n_rows)
+
+    coeffs, idx = vectorized_lstsq_numpy(df, ["m0", "m1", "m2"],
+                                         group_column="g")
+
+    for k in rng.choice(len(idx), size=20, replace=False):
+        sub = df[df["g"] == idx[k]]
+        expected, *_ = np.linalg.lstsq(sub[["m0", "m1", "m2"]].values,
+                                       sub["image"].values, rcond=None)
+        np.testing.assert_allclose(coeffs[k], expected, rtol=1e-8)
+
+
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_chunked_matches_unchunked():
     # Unlike the old inline example(), pass the same group_column to both
     # implementations (chunked defaults to "tmpl_ind", numpy to the index).

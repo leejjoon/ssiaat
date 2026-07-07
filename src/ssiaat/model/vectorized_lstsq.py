@@ -1,5 +1,86 @@
-import pandas as pd
+import warnings
+
 import numpy as np
+import pandas as pd
+
+
+def vectorized_lstsq_arrays(model_arrays, target, codes, n_groups, *,
+                            weights=None, return_error=False):
+    """Per-group linear least squares via normal equations, numpy-only.
+
+    Parameters
+    ----------
+    model_arrays : sequence of 1d ndarrays
+        One array per model, evaluated on every row.
+    target : 1d ndarray
+        The data to fit.
+    codes : 1d int ndarray
+        Group label per row, in [0, n_groups) (e.g. from ``pd.factorize``).
+    n_groups : int
+        Number of groups.
+    weights : 1d ndarray, optional
+        Per-row weights (typically 1/variance). None means unweighted.
+    return_error : bool
+        Also return per-coefficient error estimates.
+
+    Returns
+    -------
+    coeffs : (n_groups, n_models) ndarray
+    coeffs_err : (n_groups, n_models) ndarray, only when return_error
+
+    Notes
+    -----
+    Each cross product is accumulated per group with ``np.bincount`` and
+    freed before the next one, so peak extra memory is about one
+    row-length float64 array -- unlike the previous pandas groupby
+    implementation, which materialized every product at once.
+    """
+    n_models = len(model_arrays)
+    target = np.asarray(target, dtype="float64")
+
+    def groupsum(values):
+        return np.bincount(codes, weights=values, minlength=n_groups)
+
+    ATA = np.zeros((n_groups, n_models, n_models))
+    ATy = np.zeros((n_groups, n_models, 1))
+
+    for i in range(n_models):
+        mi_w = np.asarray(model_arrays[i], dtype="float64")
+        if weights is not None:
+            mi_w = mi_w * weights
+        for j in range(i, n_models):
+            val = groupsum(mi_w * model_arrays[j])
+            ATA[:, i, j] = val
+            if i != j:
+                ATA[:, j, i] = val
+        ATy[:, i, 0] = groupsum(mi_w * target)
+
+    # Solve for all groups at once. Using pinv handles singular matrices gracefully.
+    inv_ATA = np.linalg.pinv(ATA)
+    coeffs = (inv_ATA @ ATy).squeeze(axis=-1)
+
+    if return_error:
+        # Error estimation
+        wy2 = target * target
+        if weights is not None:
+            wy2 = wy2 * weights
+        sum_wy2 = groupsum(wy2)
+        sum_c_ATy = np.einsum('ni,ni->n', coeffs, ATy.squeeze(axis=-1))
+        rss = np.maximum(sum_wy2 - sum_c_ATy, 0)  # RSS should be non-negative
+
+        if weights is None:
+            n_samples = np.bincount(codes, minlength=n_groups)
+            dof = n_samples - n_models
+            dof = np.where(dof > 0, dof, np.nan)
+            sigma2 = rss / dof
+            coeffs_cov = inv_ATA * sigma2[:, np.newaxis, np.newaxis]
+        else:
+            coeffs_cov = inv_ATA
+
+        coeffs_err = np.sqrt(np.maximum(np.diagonal(coeffs_cov, axis1=1, axis2=2), 0))
+        return coeffs, coeffs_err
+
+    return coeffs
 
 
 def vectorized_lstsq_numpy(df, model_columns,
@@ -14,117 +95,37 @@ def vectorized_lstsq_numpy(df, model_columns,
     basically done for each group which could have different number of rows. Only the
     amplitude of each model is fitted.
     """
+    labels = df.index if group_column is None else df[group_column]
+    codes, uniques = pd.factorize(labels, sort=True)
+    index_values = np.asarray(uniques)
+
     if variance_column is not None:
-        weights = 1.0 / df[variance_column]
+        weights = 1.0 / df[variance_column].to_numpy(dtype="float64")
     else:
-        weights = 1.0
+        weights = None
 
-    # Precompute all necessary products (weighted if applicable)
-    products = {}
-    for i, col1 in enumerate(model_columns):
-        for j, col2 in enumerate(model_columns):
-            if i <= j:
-                products[f"m{i}m{j}"] = df[col1] * df[col2] * weights
-        products[f"m{i}y"] = df[col1] * df[target_column] * weights
+    model_arrays = [df[col].to_numpy() for col in model_columns]
+    target = df[target_column].to_numpy()
 
+    result = vectorized_lstsq_arrays(model_arrays, target, codes,
+                                     len(index_values), weights=weights,
+                                     return_error=return_error)
     if return_error:
-        products["yy"] = df[target_column]**2 * weights
-        if variance_column is None:
-            products["count"] = np.ones(len(df))
+        coeffs, coeffs_err = result
+        return coeffs, coeffs_err, index_values
 
-    # Aggregate products by group
-    if group_column is None:
-        aggregated = pd.DataFrame(products).groupby(by=df.index).sum()
-    else:
-        aggregated = pd.DataFrame(products).groupby(df[group_column]).sum()
-
-    # Construct the (N, M, M) ATA matrices and (N, M, 1) ATy vectors
-    n_groups = len(aggregated)
-    n_models = len(model_columns)
-    ATA = np.zeros((n_groups, n_models, n_models))
-    ATy = np.zeros((n_groups, n_models, 1))
-
-    for i in range(n_models):
-        for j in range(i, n_models):
-            val = aggregated[f"m{i}m{j}"].values
-            ATA[:, i, j] = val
-            if i != j:
-                ATA[:, j, i] = val
-        ATy[:, i, 0] = aggregated[f"m{i}y"].values
-
-    # Solve for all groups at once. Using pinv handles singular matrices gracefully.
-    inv_ATA = np.linalg.pinv(ATA)
-    coeffs = (inv_ATA @ ATy).squeeze(axis=-1)
-
-    if return_error:
-        # Error estimation
-        sum_wy2 = aggregated["yy"].values
-        sum_c_ATy = np.einsum('ni,ni->n', coeffs, ATy.squeeze(axis=-1))
-        rss = np.maximum(sum_wy2 - sum_c_ATy, 0)  # RSS should be non-negative
-
-        if variance_column is None:
-            n_samples = aggregated["count"].values
-            dof = n_samples - n_models
-            dof = np.where(dof > 0, dof, np.nan)
-            sigma2 = rss / dof
-            coeffs_cov = inv_ATA * sigma2[:, np.newaxis, np.newaxis]
-        else:
-            coeffs_cov = inv_ATA
-
-        coeffs_err = np.sqrt(np.maximum(np.diagonal(coeffs_cov, axis1=1, axis2=2), 0))
-        return coeffs, coeffs_err, aggregated.index.values
-
-    return coeffs, aggregated.index.values
+    return result, index_values
 
 
 def vectorized_lstsq_chunked(df, model_columns, chunk_size=1000, **kwargs):
+    """Deprecated: the bincount-based vectorized_lstsq_numpy no longer
+    builds large intermediates, so chunking buys nothing. This wrapper
+    keeps the old default of grouping by the "tmpl_ind" column (the numpy
+    version defaults to the index) and ignores chunk_size.
     """
-    Divide and conquer version of vectorized_lstsq_numpy.
-    Splits the dataframe into chunks of groups to reduce memory usage.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input dataframe.
-    model_columns : list of str
-        Columns to use as models.
-    chunk_size : int, optional
-        Number of groups per chunk. Default is 1000.
-    **kwargs : dict
-        Additional arguments passed to vectorized_lstsq_numpy.
-    """
-    group_column = kwargs.get("group_column", "tmpl_ind")
-    return_error = kwargs.get("return_error", False)
-
-    # Sort by group_column to allow efficient slicing
-    df_sorted = df.sort_values(group_column)
-    
-    # Get unique groups and their counts in sorted order
-    unique_groups, group_counts = np.unique(df_sorted[group_column].values, return_counts=True)
-    
-    # Calculate cumulative indices for slicing
-    cum_indices = np.cumsum(np.insert(group_counts, 0, 0))
-
-    results = []
-    for i in range(0, len(unique_groups), chunk_size):
-        start_idx = cum_indices[i]
-        end_idx = cum_indices[min(i + chunk_size, len(unique_groups))]
-        
-        df_chunk = df_sorted.iloc[start_idx:end_idx]
-        res = vectorized_lstsq_numpy(df_chunk, model_columns, **kwargs)
-        results.append(res)
-
-    if not results:
-        if return_error:
-            return np.array([]), np.array([]), np.array([])
-        return np.array([]), np.array([])
-
-    if return_error:
-        coeffs = np.concatenate([r[0] for r in results], axis=0)
-        errs = np.concatenate([r[1] for r in results], axis=0)
-        indices = np.concatenate([r[2] for r in results], axis=0)
-        return coeffs, errs, indices
-    else:
-        coeffs = np.concatenate([r[0] for r in results], axis=0)
-        indices = np.concatenate([r[1] for r in results], axis=0)
-        return coeffs, indices
+    warnings.warn(
+        "vectorized_lstsq_chunked is deprecated: vectorized_lstsq_numpy now"
+        " runs at near-constant memory; call it directly.",
+        DeprecationWarning, stacklevel=2)
+    kwargs.setdefault("group_column", "tmpl_ind")
+    return vectorized_lstsq_numpy(df, model_columns, **kwargs)
