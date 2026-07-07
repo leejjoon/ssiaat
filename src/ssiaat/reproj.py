@@ -27,6 +27,8 @@ from .tabular_bandpass_lite import Tabular_Bandpass_Lite
 from .flags import get_flagval, DEFAULT_FLAGS
 # DEFAULT_FLAGS: tuple[str, ...] = ("ALL", "-FULLSAMPLE", "-SOURCE")
 
+logger = logging.getLogger(__name__)
+
 def get_metadata_from_filename(fn):
     fn = Path(fn)
     pipe_run = fn.name.split(".")[0].split("_spx_")[-1]
@@ -357,7 +359,7 @@ def get_df_from_uri(wcs_tmpl, uri, *, pbar=None, zodi_corrector=None):
     if pbar is not None:
         pbar.update()
     else:
-        print(uri)
+        logger.info("processed %s", uri)
 
     return _df
 
