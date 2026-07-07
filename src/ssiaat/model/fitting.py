@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 from itertools import chain
-from .vectorized_lstsq import vectorized_lstsq_numpy
+from .vectorized_lstsq import vectorized_lstsq_numpy, vectorized_lstsq_arrays
 
 class FitResults:
     def __init__(self, idx, C, Cerr=None, *, model,
@@ -148,11 +148,25 @@ class Model:
             return idx, C
 
     def least_square_fit(self, stable, variance_column="variance", return_error=False):
-        df = self._populate_table_with_model_eval(stable)
+        # Evaluate models straight into arrays and fit in one pure-numpy
+        # pass -- no full-length DataFrame copy of wvl/image/variance.
+        wvl = stable["wvl"].to_numpy()
+        model_arrays = [m(wvl) for m in chain(self.models, self.cont_models)]
+        target = stable["image"].to_numpy()
+        weights = (1.0 / stable[variance_column].to_numpy(dtype="float64")
+                   if variance_column is not None else None)
 
-        idx_C_Cerr = self._least_square_fit(df,
-                                            variance_column=variance_column,
-                                            return_error=return_error)
+        codes, uniques = pd.factorize(stable.index, sort=True)
+        idx = np.asarray(uniques)
+
+        result = vectorized_lstsq_arrays(model_arrays, target, codes,
+                                         len(idx), weights=weights,
+                                         return_error=return_error)
+        if return_error:
+            idx_C_Cerr = (idx, *result)
+        else:
+            idx_C_Cerr = (idx, result)
+
         ssiaat_template_header = stable.attrs.get("ssiaat_template_header", None)
         return FitResults(*idx_C_Cerr, model=self,
                           ssiaat_template_header=ssiaat_template_header)
