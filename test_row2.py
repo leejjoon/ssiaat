@@ -15,7 +15,7 @@ async def test_single_file():
     print("Parsed row info:")
     print(row)
     
-    root_uri = "http://100.103.128.7:3000"
+    root_uri = "webfsd://100.103.128.7:3000"
     uri_option = dict()
     root_uri = "s3://nasa-irsa-spherex"
     uri_option = dict(anon=True)

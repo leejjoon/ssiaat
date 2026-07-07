@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*egg-info
 
 # Environments
 .env
@@ -15,3 +16,12 @@ venv.bak/
 # IDEs
 .idea/
 .vscode/
+background
+deprecated
+hips_mosaics
+m82
+ngc628
+parquet_redo
+test
+ngc628_raw
+
