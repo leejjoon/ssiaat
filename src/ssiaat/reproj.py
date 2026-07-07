@@ -323,6 +323,45 @@ def get_df_from_hdul(hdul, wcs_tmpl, aux_metadata=None):
 
     return df
 
+import fsspec
+
+def read_uri(uri, **storage_options):
+    # Get the filesystem instance
+    protocol_name = uri.split('://')[0]
+    fs = fsspec.filesystem(protocol_name, asynchronous=False, **storage_options)
+
+    try:
+        with fs.open(uri, "rb") as f:
+            content = f.read()
+            return content
+    except AttributeError as e:
+      raise e
+
+
+def get_df_from_uri(wcs_tmpl, uri, *, pbar=None, zodi_corrector=None):
+    aux_metadata = get_metadata_from_filename(uri)
+
+    buffer = read_uri(uri)
+    f = BytesIO(buffer)
+
+    hdul = fits.open(f)
+
+    zodi = hdul["ZODI"].data
+    if zodi_corrector is not None:
+        zodi = zodi_corrector(zodi)
+
+    hdul["IMAGE"].data -= zodi
+
+    _df = get_df_from_hdul(hdul, wcs_tmpl, aux_metadata=aux_metadata)
+
+    if pbar is not None:
+        pbar.update()
+    else:
+        print(uri)
+
+    return _df
+
+
 
 def merge_to_stable(dflist, tmpl_wcs=None):
     # cards = TemplateHeaderCards.from_dataframe(dflist[0])
