@@ -29,6 +29,19 @@ register_fs()
 # Default concurrency limit
 MAX_CONCURRENT_TASKS = 20
 
+_PIPE_VER_RE = re.compile(r"l2b-v(\d+)-(\d+)-(\d+)$")
+
+def _parse_pipe_version(name):
+    """'l2b-v20-2025-335' -> (20, 2025, 335); None if not a pipeline version.
+
+    Versions must be compared numerically: as strings, 'l2b-v9-...' sorts
+    after 'l2b-v20-...' and "find latest" silently returns old data.
+    """
+    m = _PIPE_VER_RE.match(name)
+    if m is None:
+        return None
+    return tuple(int(g) for g in m.groups())
+
 def _get_table_from_filenames(filenames):
     """
     Parse filenames into a DataFrame with plan, pointing, step, band, and pipeline_run components.
@@ -67,13 +80,16 @@ from pathlib import Path
 
 # def get_readpath(rootdir, plan, band, root):
 
-def find_local_uri(fn, release="qr2"):
+def find_local_uri(fn, release="qr2", rootdir=None):
 
     # path in olaf
     # "/proj/internal_group/spherex/Shared/prod-qr2/repo//level2"
     # release = "qr2"
 
-    rootdir = Path("/proj/internal_group/spherex/Shared/") / f"prod-{release}" / "repo"
+    if rootdir is None:
+        rootdir = Path("/proj/internal_group/spherex/Shared/") / f"prod-{release}" / "repo"
+    else:
+        rootdir = Path(rootdir)
 
     # FIXME we should have a simpler way
     k = _get_table_from_filenames([fn]).iloc[0]
@@ -81,30 +97,18 @@ def find_local_uri(fn, release="qr2"):
     band = k["band"]
     root = "{}_{}D{}".format(k["pointing"], k["step"], k["band"])
 
-    pipe_version_candidates = sorted(p.name for p in (rootdir / f"level2/{plan}").iterdir())
+    pipe_version_candidates = sorted(
+        (p.name for p in (rootdir / f"level2/{plan}").iterdir()
+         if _parse_pipe_version(p.name) is not None),
+        key=_parse_pipe_version, reverse=True)
 
     for pipe_ver in pipe_version_candidates:
-        # print("pipe_ver", pipe_ver)
         file_key = f"level2/{plan}/{pipe_ver}/{band}/level2_{plan}_{root}_spx_{pipe_ver}.fits"
         cand = rootdir / file_key
-        # print(cand)
         if cand.exists():
             return cand
 
     return None
-
-# fn = "filtered_images.csv"
-# df = pd.read_csv(fn)
-
-# df_local = df[df["s3uri"].isna()].copy()
-
-# row = df_local.iloc[0]
-
-def get_local_path(row):
-    p = get_readpath(rootdir, row["plan"], row["band"], row["root"])
-    return str(p)
-
-
 
 async def _find_latest_single_async(row, fs, root_path, release, semaphore):
     """Asynchronously find the latest URI for a single row using fsspec."""
@@ -121,9 +125,9 @@ async def _find_latest_single_async(row, fs, root_path, release, semaphore):
             pipe_vers = []
             for item in items:
                 name = item.rstrip('/').split('/')[-1]
-                if name.startswith('l2b-v'):
+                if _parse_pipe_version(name) is not None:
                     pipe_vers.append(name)
-            pipe_vers.sort(reverse=True)
+            pipe_vers.sort(key=_parse_pipe_version, reverse=True)
 
             for pipe_ver in pipe_vers:
                 # Based on the confirmed structure: {plan}/{pipe_ver}/{band}/{filename}
