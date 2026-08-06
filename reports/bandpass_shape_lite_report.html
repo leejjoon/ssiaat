@@ -521,6 +521,20 @@
           0.68&ndash;1.22 and <code>dmu_left/dmu_right</code> ranges 0.75&ndash;1.04 across the
           six bands, no consistent relation. Keeping five independent shape parameters per
           band, as before.</p>
+      
+        <p><strong>Follow-up tested:</strong> instead of merging the pair into one shared
+          value, fit <code>(a_left+a_right, a_left&minus;a_right)</code> or
+          <code>(a_left+a_right, a_left/a_right)</code> and see if either needs a
+          <em>lower</em> polynomial degree for the same accuracy (same total parameter count,
+          different basis). Chebyshev fitting is linear, so sum/diff is provably &mdash; and
+          numerically confirmed to floating-point precision (~10&#8315;&#185;&#8309;) &mdash;
+          <em>exactly</em> the same fit as independent a_left/a_right, in every band, at every
+          degree: no possible gain. The nonlinear sum/ratio basis could in principle differ,
+          but tested across all six bands it never needed a lower degree either (matched or
+          one degree worse), with RMS differences at the noise level. Independent
+          <code>a_left</code>, <code>a_right</code>, <code>dmu_left</code>,
+          <code>dmu_right</code> &mdash; what the coefficients above already use &mdash; stays
+          the simplest working basis.</p>
       </div>
 
       <div class="callout" style="border-left: 3px solid var(--accent);">
