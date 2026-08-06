@@ -106,8 +106,16 @@ def _get_converter(obj):
 @pd.api.extensions.register_dataframe_accessor("spectral")
 class SpectralTable:
     def __init__(self, pandas_obj):
-        if not check_index_stable(pandas_obj):
-            raise AttributeError("Spectral accessor only available for DataFrames with integer index and duplicates.")
+        # Only an integer index is required -- NOT duplicates. A stable
+        # normally has many wavelengths per pixel (duplicated tmpl_ind),
+        # but a tile covered by a single exposure legitimately has one row
+        # per pixel (unique index) and every method here (groupby(index),
+        # pd.cut, reindex) works fine on it. check_index_stable stays
+        # strict for promote_to_stable's safety net; the accessor does not.
+        if not is_integer_dtype(pandas_obj.index.dtype):
+            raise AttributeError(
+                "Spectral accessor only available for DataFrames with an"
+                " integer index.")
         self._obj = pandas_obj
 
     @property

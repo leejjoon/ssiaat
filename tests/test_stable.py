@@ -189,3 +189,38 @@ def test_make_simple_image(synthetic_stable):
 
     means = synthetic_stable.groupby(synthetic_stable.index)["image"].mean()
     np.testing.assert_allclose(flat[finite_pixels], means.loc[sorted(PIXELS)])
+
+
+def test_spectral_accessor_accepts_unique_index(template_header):
+    """A tile covered by a single exposure has one row per pixel (unique
+    integer index). It is still a valid stable and the .spectral accessor
+    must work on it -- only the integer-index requirement applies, not the
+    has-duplicates one that check_index_stable / promote_to_stable enforce.
+    """
+    df = pd.DataFrame({"tmpl_ind": PIXELS,
+                       "wvl": np.linspace(3.95, 4.15, len(PIXELS)),
+                       "image": np.arange(len(PIXELS), dtype="float64")})
+    # promote_to_stable is strict, so the single-exposure caller opts out.
+    stable = promote_to_stable(df, header=template_header,
+                               ignore_index_check=True)
+    assert not stable.index.has_duplicates
+    assert not check_index_stable(stable)   # predicate stays strict
+
+    # ... but the accessor is available and its methods work.
+    image = stable.spectral.make_simple_image(3.9, 4.2)
+    assert image.shape == TMPL_SHAPE
+    finite = np.flatnonzero(np.isfinite(np.ravel(np.asarray(image))))
+    np.testing.assert_array_equal(finite, sorted(PIXELS))
+
+    itable = stable.spectral.make_simple_itable(3.9, 4.2)
+    assert not itable.index.has_duplicates
+    spec = stable.spectral.binned_spectrum(bins=5)
+    assert isinstance(spec, pd.Series)
+
+
+def test_spectral_accessor_rejects_noninteger_index(template_header):
+    df = pd.DataFrame({"image": [1.0, 2.0, 3.0]}, index=[0.0, 1.0, 2.0])
+    df.attrs["ssiaat_template_header"] = \
+        TemplateHeaderCards.from_header(template_header).header_image_list
+    with pytest.raises(AttributeError, match="integer index"):
+        df.spectral.make_simple_image(3.9, 4.2)
