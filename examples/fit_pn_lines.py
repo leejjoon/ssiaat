@@ -243,9 +243,10 @@ def print_line_table(result, label):
     print(with_cols.to_string(index=False, float_format=lambda x: f"{x:.5f}"))
 
     print(f"\n=== {label}: per-(line,band) detail ===")
-    amp = result.amplitudes[["line", "band", "center", "amplitude", "err_formal",
-                             "err_cal", "snr_cal", "coverage", "shape_extrapolated",
-                             "at_bound", "blended", "resid_rms_inner", "resid_rms_outer"]]
+    amp = result.amplitudes[["line", "band", "center", "amplitude", "amplitude_at_floor",
+                             "err_formal", "err_cal", "snr_cal", "coverage",
+                             "shape_extrapolated", "at_bound", "blended",
+                             "resid_rms_inner", "resid_rms_outer"]]
     print(amp.to_string(index=False, float_format=lambda x: f"{x:.5f}"))
 
     if len(result.extra_model_amplitudes):

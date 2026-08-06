@@ -108,6 +108,38 @@ def test_noiseless_recovers_centers_and_per_band_amplitudes(noiseless_setup):
     assert abs(a1 - a2) > 0.1
 
 
+def test_nonneg_lines_clips_negative_amplitude_to_zero():
+    """A line with NO true signal, in pure noise, can land on a negative
+    unconstrained amplitude by chance -- unphysical for an emission
+    line (see the note in MultiBandLineModel's `nonneg_lines`
+    docstring). The default `nonneg_lines=True` must clip that to
+    exactly zero and flag `amplitude_at_floor`; `nonneg_lines=False`
+    recovers the old unconstrained behavior, which this seed is chosen
+    to actually drive negative (confirming the test exercises the
+    constraint, not a case where it never binds)."""
+    rng = np.random.default_rng(0)
+    grid = BAND1_GRID
+    err = np.full_like(grid, 0.05)
+    value = 1.0 + rng.normal(0, 0.05, size=grid.shape)
+    lines = [LineSpec("C", 0.95, fixed=True)]  # fixed: isolate the amplitude solve
+    spectra = [BandSpectrum(1, grid, value, err, baseline_degree=1)]
+
+    result_free = MultiBandLineModel(lines, spectra, nonneg_lines=False).fit()
+    amp_free = result_free.amplitudes.loc[
+        result_free.amplitudes.line == "C", "amplitude"].iloc[0]
+    assert amp_free < 0  # sanity check: this seed really does go negative unconstrained
+
+    result_pos = MultiBandLineModel(lines, spectra, nonneg_lines=True).fit()
+    row = result_pos.amplitudes.loc[result_pos.amplitudes.line == "C"].iloc[0]
+    assert row["amplitude"] == 0.0
+    assert row["amplitude_at_floor"]
+    # The formal error must stay the UNCONSTRAINED value (not degenerate
+    # to zero just because the point estimate is pinned), so a floored
+    # line still gets a meaningful upper limit downstream.
+    np.testing.assert_allclose(row["err_formal"], result_free.amplitudes.loc[
+        result_free.amplitudes.line == "C", "err_formal"].iloc[0])
+
+
 def test_noiseless_recovers_baseline_coefficients(noiseless_setup):
     lines, spectra = noiseless_setup
     model = MultiBandLineModel(lines, spectra)

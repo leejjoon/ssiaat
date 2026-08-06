@@ -40,6 +40,17 @@ recalibrates errors via an empirical residual-scan null (see
 an assumed-covariance GLS correction was tried during this module's
 design and is numerically unstable for this data (a near-singular
 inverse amplifies high-frequency noise), so don't reach for that instead.
+
+Every band's per-line/extra-model amplitude is solved as a NON-NEGATIVE
+weighted least squares by default (`nonneg_lines=True`, see
+`MultiBandLineModel`) -- an emission line's flux is not physically
+negative, so letting a weak/blended line's coefficient swing negative
+(typically to partially cancel a stronger neighbor's imperfectly-modeled
+wing) would be a fitting artifact reported as if it were real. Only the
+point estimate is constrained; the formal error used for calibrated S/N
+and upper limits is still the unconstrained covariance, so a line
+pinned at zero still gets a meaningful upper limit rather than a
+degenerate one.
 """
 import warnings
 from dataclasses import dataclass, field
@@ -47,7 +58,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 from numpy.polynomial.chebyshev import chebvander
-from scipy.optimize import least_squares
+from scipy.optimize import least_squares, lsq_linear
 
 from ..bandpass_shape_lite import BandpassShapeLite
 from .sed import hflatline
@@ -167,17 +178,34 @@ def _normalized_profile(center, dmu_left, a_left, dmu_right, a_right):
     return profile
 
 
-def _weighted_lstsq(X, y, weight):
+def _weighted_lstsq(X, y, weight, *, lower=None):
     """Weighted least squares via row scaling (numerically nicer than
     forming normal equations directly). Returns (coeffs, cov, resid),
     with `cov = pinv(X^T W X)` UNRESCALED by chi2/dof -- same convention
     as `vectorized_lstsq_arrays` (weights are assumed to already be
     1/variance); singular systems are handled gracefully via `pinv`
-    rather than raising, also matching that module."""
+    rather than raising, also matching that module.
+
+    `lower`, if given, is a per-column lower-bound array (`-inf` for an
+    unconstrained column); used to enforce e.g. amplitude >= 0 for
+    emission-line/extra-model columns (see `MultiBandLineModel`'s
+    `nonneg_lines`) while leaving the baseline free. When any bound is
+    finite, solved via `scipy.optimize.lsq_linear(..., method="bvls")`
+    -- an exact active-set method, appropriate here since these design
+    matrices are always small and dense -- instead of plain `lstsq`.
+    `cov` is STILL the unconstrained `pinv(X^T W X)` regardless of
+    `lower`: "how uncertain would this coefficient be without the
+    physical constraint," so downstream error/upper-limit reporting
+    isn't distorted by which coefficients happened to land on their
+    bound -- only the point estimate itself is constrained."""
     sqrt_w = np.sqrt(weight)
     Xw = X * sqrt_w[:, None]
     yw = y * sqrt_w
-    coeffs, _, _, _ = np.linalg.lstsq(Xw, yw, rcond=None)
+    if lower is not None and np.any(np.isfinite(lower)):
+        ub = np.full(X.shape[1], np.inf)
+        coeffs = lsq_linear(Xw, yw, bounds=(lower, ub), method="bvls").x
+    else:
+        coeffs, _, _, _ = np.linalg.lstsq(Xw, yw, rcond=None)
     resid = y - X @ coeffs
     cov = np.linalg.pinv(Xw.T @ Xw)
     return coeffs, cov, resid
@@ -226,12 +254,28 @@ class MultiBandLineModel:
     normalize_profiles : bool
         Peak-normalize each line profile before fitting (default True;
         see `_normalized_profile`).
+    nonneg_lines : bool
+        If True (default), constrain every tied-line and extra-model
+        amplitude to be >= 0 in each band's linear solve -- an emission
+        line's flux is not physically negative, so an unconstrained fit
+        letting one go negative (typically a weak/blended line's
+        coefficient swinging negative to partially cancel a stronger
+        neighbor's imperfectly-modeled wing) is a fitting artifact, not
+        a real absorption feature. The baseline is NOT constrained.
+        Coefficients pinned at the amplitude=0 floor are flagged
+        `amplitude_at_floor=True` in the results; their FORMAL error
+        (and hence calibrated S/N / upper limit) is still computed from
+        the unconstrained covariance, so a floored line still gets a
+        meaningful upper limit rather than a degenerate zero error.
+        Set False to recover the old unconstrained behavior (e.g. to
+        compare/debug).
     """
 
     def __init__(self, lines, spectra, *, shape=None, centers_mode="free",
                 min_coverage=0.5, min_pts=10, profile_halfwidth_fwhm=3.0,
                 allow_extrapolated_shape=False, center_bound_fwhm=0.5,
-                min_center_bound=0.005, normalize_profiles=True):
+                min_center_bound=0.005, normalize_profiles=True,
+                nonneg_lines=True):
         if centers_mode not in ("free", "wavelength_solution"):
             raise ValueError(f"centers_mode={centers_mode!r}; must be"
                              " 'free' or 'wavelength_solution'")
@@ -257,6 +301,7 @@ class MultiBandLineModel:
         self.center_bound_fwhm = center_bound_fwhm
         self.min_center_bound = min_center_bound
         self.normalize_profiles = normalize_profiles
+        self.nonneg_lines = nonneg_lines
 
         self._assignment = self._compute_assignment()
 
@@ -432,7 +477,11 @@ class MultiBandLineModel:
             return dict(coeffs=np.array([]), cov=np.zeros((0, 0)),
                        resid=spec.value.copy(), line_names=line_names,
                        extra_names=extra_names, extrap_flags=extrap_flags)
-        coeffs, cov, resid = _weighted_lstsq(X, spec.value, spec.weight)
+        lower = None
+        if self.nonneg_lines and (line_names or extra_names):
+            lower = np.full(X.shape[1], -np.inf)
+            lower[:len(line_names) + len(extra_names)] = 0.0
+        coeffs, cov, resid = _weighted_lstsq(X, spec.value, spec.weight, lower=lower)
         return dict(coeffs=coeffs, cov=cov, resid=resid, line_names=line_names,
                    extra_names=extra_names, extrap_flags=extrap_flags)
 
@@ -546,7 +595,8 @@ class MultiBandLineModel:
                 err_formal = float(np.sqrt(max(cov[i, i], 0.0)))
                 extra_rows.append(dict(
                     name=extra_name, band=band, amplitude=amp, err_formal=err_formal,
-                    snr_formal=(amp / err_formal if err_formal > 0 else np.nan)))
+                    snr_formal=(amp / err_formal if err_formal > 0 else np.nan),
+                    amplitude_at_floor=bool(self.nonneg_lines and amp <= 1e-9)))
             for i in range(n_lines):
                 line_name = solved["line_names"][i]
                 c = self._effective_center(line_name, theta_centers, theta_deltas, band)
@@ -566,6 +616,7 @@ class MultiBandLineModel:
                     fwhm=fwhm, shape_extrapolated=extrapolated,
                     at_bound=at_bound.get(
                         line_name if self.centers_mode == "free" else band, False),
+                    amplitude_at_floor=bool(self.nonneg_lines and amp <= 1e-9),
                     resid_rms_inner=inner_rms, resid_rms_outer=outer_rms,
                 ))
         amplitudes = pd.DataFrame(amp_rows)
@@ -597,7 +648,8 @@ class MultiBandLineModel:
         centers = pd.Series(theta_centers, name="center") if theta_centers else None
         deltas = pd.Series(theta_deltas, name="delta") if theta_deltas else None
         extra_model_amplitudes = pd.DataFrame(
-            extra_rows, columns=["name", "band", "amplitude", "err_formal", "snr_formal"])
+            extra_rows, columns=["name", "band", "amplitude", "err_formal", "snr_formal",
+                                 "amplitude_at_floor"])
 
         return MultiBandLineFitResults(
             model=self, centers=centers, deltas=deltas, amplitudes=amplitudes,
