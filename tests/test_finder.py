@@ -6,7 +6,6 @@ file:// protocol — no S3/network needed.
 import asyncio
 import logging
 
-import pandas as pd
 import pytest
 
 from ssiaat.finder import (

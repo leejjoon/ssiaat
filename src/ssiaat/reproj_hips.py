@@ -1,17 +1,10 @@
-import time
 from pathlib import Path
-from io import BytesIO
 
-from collections.abc import Callable, Iterable, Mapping
 
-import pandas as pd
 import numpy as np
 
 from astropy.io import fits
-from astropy.nddata import NDData
 
-import logging
-import os
 
 from reproject import reproject_adaptive, reproject_interp
 from reproject.hips.utils import tile_header

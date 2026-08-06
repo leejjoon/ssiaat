@@ -42,7 +42,8 @@ def test_public_api_names_resolve():
 
 def test_bare_import_registers_accessors():
     # `import ssiaat` alone must be enough for df.spectral / s.itable.
-    import subprocess, sys
+    import subprocess
+    import sys
     code = (
         "import ssiaat, pandas as pd\n"
         "df = pd.DataFrame({'a': [1.0, 2.0, 3.0]}, index=[0, 0, 1])\n"

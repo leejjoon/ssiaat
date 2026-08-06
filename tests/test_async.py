@@ -7,7 +7,6 @@ raising processor killed workers and the run deadlocked on queue.join().
 import asyncio
 
 import pandas as pd
-import pytest
 
 from ssiaat.async_collector import AsyncCollector
 from ssiaat.reproj_s3_async import run_reproj_tasks

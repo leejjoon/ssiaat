@@ -1,5 +1,4 @@
-from collections.abc import Callable, Iterable, Mapping
-import time
+from collections.abc import Iterable
 from pathlib import Path
 from io import BytesIO
 
@@ -12,13 +11,10 @@ from astropy.nddata import NDData
 # from spherex_utils import utils
 
 import logging
-import os
 
 from reproject import reproject_adaptive, reproject_interp
-from reproject.hips.utils import tile_header
 
 from astropy.wcs import WCS
-from astropy.coordinates import Galactic
 
 from .wcs_helper import TemplateHeaderCards
 from .tabular_bandpass_lite import Tabular_Bandpass_Lite

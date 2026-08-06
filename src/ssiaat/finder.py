@@ -13,15 +13,11 @@ The logic for finding the latest file follows these steps:
 5. Return the URI of the first (latest) existing file found.
 """
 import pandas as pd
-from urllib.parse import urlparse
 import logging
-import os
 import asyncio
 import re
 from tqdm.asyncio import tqdm
-import fsspec
 from fsspec.core import url_to_fs
-import aiohttp
 from .fs import register_fs
 
 # Register custom filesystems
@@ -230,7 +226,8 @@ def check_uri(df: pd.DataFrame, root_uri: str, progress: bool = False, storage_o
     fs, root_path = url_to_fs(root_uri, **(storage_options or {}))
     def _check_single(uri):
         full_path = f"{root_path.rstrip('/')}/{uri}"
-        if fs.exists(full_path): return full_path
+        if fs.exists(full_path):
+            return full_path
         return None
     if progress:
         from tqdm import tqdm

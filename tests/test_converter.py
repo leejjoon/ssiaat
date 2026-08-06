@@ -1,7 +1,6 @@
 """SsiaatConverter: template indexing and itable <-> image round trips."""
 import numpy as np
 import pandas as pd
-import pytest
 
 from ssiaat.spherex_table import Image
 

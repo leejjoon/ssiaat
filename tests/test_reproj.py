@@ -5,7 +5,6 @@ after zodi subtraction and adaptive reprojection every template pixel
 must come back ~2.0.
 """
 import numpy as np
-import pytest
 
 from ssiaat.reproj import get_df_from_uri, merge_to_stable
 

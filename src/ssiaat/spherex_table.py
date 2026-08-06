@@ -49,7 +49,6 @@ Usage Example:
 import pandas as pd
 import numpy as np
 # from numpy import NDData
-import numpy.typing as npt
 from astropy.io import fits
 
 
@@ -217,7 +216,8 @@ class Image(np.ndarray):
         # 1. Explicitly created: Image(...) -> obj is None
         # 2. View casting: arr.view(Image) -> obj is arr
         # 3. Slicing: img[1:2] -> obj is img
-        if obj is None: return
+        if obj is None:
+            return
         self._ssiaat_converter = getattr(obj, '_ssiaat_converter', None)
 
     def to_itable(self):
@@ -364,7 +364,6 @@ class SsiaatConverter:
 # %%
 from scipy.interpolate import interp1d
 # from spherex_tabular_bandpass import Tabular_Bandpass
-from .tabular_bandpass_lite import Tabular_Bandpass_Lite as Tabular_Bandpass
 
 class BandpassTool:
     def __init__(self, bandpass_model, band):
