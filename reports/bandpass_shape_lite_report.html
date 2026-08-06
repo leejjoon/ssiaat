@@ -1,0 +1,465 @@
+<title>Bandpass Shape Lite — Build Report</title>
+<style>
+  :root {
+    --bg: #F2F3F1;
+    --surface: #FFFFFF;
+    --surface-sunken: #E9EBE8;
+    --ink: #1B1F1E;
+    --muted: #5B6360;
+    --faint: #838B87;
+    --border: #DADDD8;
+    --accent: #9C5326;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #F3E3D3;
+    --success: #2F7A5D;
+    --success-soft: #DEEFE6;
+    --warn: #9C3357;
+    --warn-soft: #F3DCE3;
+    --pending-soft: #E6E6E6;
+    --pending-ink: #6B6F6D;
+    --code-bg: #EDEEEC;
+    --shadow: 0 1px 2px rgba(20, 24, 22, 0.06), 0 6px 20px rgba(20, 24, 22, 0.05);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11151A;
+      --surface: #171C22;
+      --surface-sunken: #0D1116;
+      --ink: #E8ECEA;
+      --muted: #9AA6A2;
+      --faint: #6E7A76;
+      --border: #2A3138;
+      --accent: #E08A4F;
+      --accent-ink: #1B1108;
+      --accent-soft: #3A2A1E;
+      --success: #55B892;
+      --success-soft: #17332A;
+      --warn: #E081A0;
+      --warn-soft: #3A2029;
+      --pending-soft: #232A31;
+      --pending-ink: #8B9490;
+      --code-bg: #0D1116;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #11151A; --surface: #171C22; --surface-sunken: #0D1116; --ink: #E8ECEA;
+    --muted: #9AA6A2; --faint: #6E7A76; --border: #2A3138; --accent: #E08A4F;
+    --accent-ink: #1B1108; --accent-soft: #3A2A1E; --success: #55B892;
+    --success-soft: #17332A; --warn: #E081A0; --warn-soft: #3A2029;
+    --pending-soft: #232A31; --pending-ink: #8B9490; --code-bg: #0D1116;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 30px rgba(0, 0, 0, 0.35);
+  }
+  :root[data-theme="light"] {
+    --bg: #F2F3F1; --surface: #FFFFFF; --surface-sunken: #E9EBE8; --ink: #1B1F1E;
+    --muted: #5B6360; --faint: #838B87; --border: #DADDD8; --accent: #9C5326;
+    --accent-ink: #FFFFFF; --accent-soft: #F3E3D3; --success: #2F7A5D;
+    --success-soft: #DEEFE6; --warn: #9C3357; --warn-soft: #F3DCE3;
+    --pending-soft: #E6E6E6; --pending-ink: #6B6F6D; --code-bg: #EDEEEC;
+    --shadow: 0 1px 2px rgba(20, 24, 22, 0.06), 0 6px 20px rgba(20, 24, 22, 0.05);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .serif {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Georgia", serif;
+  }
+  .mono {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  h1, h2, h3 { text-wrap: balance; }
+  a { color: var(--accent); text-decoration-thickness: 1px; }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px;
+  }
+
+  .shell {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 0;
+    max-width: 1180px;
+    margin: 0 auto;
+    min-height: 100vh;
+  }
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: 1fr; }
+  }
+
+  /* ---- Rail ---- */
+  .rail {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 28px 20px 28px 8px;
+    border-right: 1px solid var(--border);
+  }
+  @media (max-width: 860px) {
+    .rail { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); padding: 20px 20px 8px; }
+  }
+  .rail-title {
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin: 0 0 14px 12px;
+  }
+  .rail-steps { display: flex; flex-direction: column; gap: 2px; }
+  .rail-step {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--ink);
+  }
+  .rail-step:hover { background: var(--surface-sunken); }
+  .rail-dot {
+    width: 20px; height: 20px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.68rem; font-weight: 700;
+    margin-top: 2px;
+  }
+  .rail-dot.done { background: var(--success-soft); color: var(--success); }
+  .rail-dot.pending { background: var(--pending-soft); color: var(--pending-ink); }
+  .rail-dot.live { background: var(--accent-soft); color: var(--accent); }
+  .rail-label { font-size: 0.88rem; font-weight: 600; }
+  .rail-sub { font-size: 0.78rem; color: var(--muted); margin-top: 1px; }
+
+  /* ---- Main ---- */
+  main { padding: 40px 48px 100px; min-width: 0; }
+  @media (max-width: 860px) { main { padding: 28px 20px 80px; } }
+
+  header.doc-head { max-width: 720px; margin-bottom: 44px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 0.74rem; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; margin-bottom: 14px;
+  }
+  .eyebrow::before { content: "◇"; font-size: 0.8em; }
+  h1.doc-title {
+    font-size: 2.15rem; margin: 0 0 14px; font-weight: 600; letter-spacing: -0.01em;
+  }
+  .doc-dek { font-size: 1.08rem; color: var(--muted); margin: 0 0 18px; max-width: 62ch; }
+  .meta-row {
+    display: flex; gap: 18px; flex-wrap: wrap;
+    font-size: 0.82rem; color: var(--faint);
+  }
+  .meta-row .mono { color: var(--muted); }
+
+  section.part { max-width: 720px; margin-bottom: 56px; scroll-margin-top: 24px; }
+  section.part.wide { max-width: 100%; }
+  .part-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .part-head h2 { font-size: 1.5rem; margin: 0; font-weight: 600; }
+  .status-pill {
+    font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase;
+    font-weight: 700; padding: 3px 9px; border-radius: 20px;
+  }
+  .status-pill.done { background: var(--success-soft); color: var(--success); }
+  .status-pill.pending { background: var(--pending-soft); color: var(--pending-ink); }
+  .status-pill.gated { background: var(--warn-soft); color: var(--warn); }
+  .part-sub { color: var(--faint); font-size: 0.9rem; margin: 0 0 20px; }
+
+  p { margin: 0 0 15px; max-width: 68ch; }
+  section.part.wide p { max-width: 68ch; }
+  ul, ol { margin: 0 0 15px; padding-left: 1.3em; }
+  li { margin-bottom: 6px; max-width: 64ch; }
+  strong { font-weight: 650; }
+  code {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+    background: var(--code-bg); padding: 0.12em 0.36em; border-radius: 4px;
+    font-size: 0.88em;
+  }
+
+  .callout {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; margin: 18px 0; box-shadow: var(--shadow);
+  }
+  .callout.finding { border-left: 3px solid var(--accent); }
+  .callout.pending-note { border-left: 3px solid var(--pending-ink); color: var(--muted); }
+  .callout p:last-child { margin-bottom: 0; }
+  .finding-label {
+    font-size: 0.72rem; letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; margin-bottom: 6px; display: block;
+  }
+
+  .table-wrap { overflow-x: auto; margin: 18px 0; border: 1px solid var(--border); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.87rem; min-width: 480px; }
+  thead th {
+    text-align: left; font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--faint); font-weight: 700; padding: 10px 14px; background: var(--surface-sunken);
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  tbody td { padding: 9px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody td.num { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+  tbody tr:hover { background: var(--surface-sunken); }
+
+  .checklist { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 0; }
+  .check-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+  }
+  .check-box {
+    flex: none; width: 18px; height: 18px; border-radius: 5px; margin-top: 1px;
+    display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 800;
+  }
+  .check-box.done { background: var(--success); color: var(--accent-ink); }
+  .check-box.pending { border: 1.5px solid var(--border); background: transparent; }
+  .check-text { font-size: 0.92rem; }
+  .check-text .mono { font-size: 0.85em; }
+
+  .diff {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.83rem; line-height: 1.55; border-radius: 10px; border: 1px solid var(--border);
+    overflow-x: auto; background: var(--code-bg);
+  }
+  .diff pre { margin: 0; padding: 16px 18px; white-space: pre; }
+  .diff .add { color: var(--success); }
+  .diff .rem { color: var(--warn); }
+
+  footer.doc-foot {
+    max-width: 720px; margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border);
+    color: var(--faint); font-size: 0.82rem;
+  }
+</style>
+
+<div class="shell">
+  <nav class="rail" aria-label="Report sections">
+    <p class="rail-title">Build sequence</p>
+    <div class="rail-steps">
+      <a class="rail-step" href="#objective">
+        <span class="rail-dot done">✓</span>
+        <span><span class="rail-label">Objective</span><br><span class="rail-sub">Why this exists</span></span>
+      </a>
+      <a class="rail-step" href="#investigation">
+        <span class="rail-dot done">✓</span>
+        <span><span class="rail-label">Investigation</span><br><span class="rail-sub">4 findings, measured</span></span>
+      </a>
+      <a class="rail-step" href="#part-a">
+        <span class="rail-dot done">✓</span>
+        <span><span class="rail-label">Part A — fit_hflatline</span><br><span class="rail-sub">Fixed mu_center, shipped</span></span>
+      </a>
+      <a class="rail-step" href="#part-b">
+        <span class="rail-dot pending">·</span>
+        <span><span class="rail-label">Part B — derivation</span><br><span class="rail-sub">Not started</span></span>
+      </a>
+      <a class="rail-step" href="#part-c">
+        <span class="rail-dot pending">·</span>
+        <span><span class="rail-label">Part C — production</span><br><span class="rail-sub">Gated on Part B</span></span>
+      </a>
+      <a class="rail-step" href="#verification">
+        <span class="rail-dot live">1/5</span>
+        <span><span class="rail-label">Verification</span><br><span class="rail-sub">Running checklist</span></span>
+      </a>
+    </div>
+  </nav>
+
+  <main>
+    <header class="doc-head">
+      <p class="eyebrow">ssiaat &middot; bandpass shape lite</p>
+      <h1 class="doc-title serif">Getting the SPHEREx bandpass without the 75&nbsp;MB package</h1>
+      <p class="doc-dek">A running record of the investigation, the fixes, and the go/no-go
+        evidence behind replacing <code>spherex_tabular_bandpass</code> with a small set of
+        hardcoded polynomials — updated as each part of the plan lands.</p>
+      <div class="meta-row">
+        <span>Report v1 &middot; <span class="mono">2026-08-06</span></span>
+        <span class="mono">src/ssiaat/spherex_table.py</span>
+        <span class="mono">examples/derive_bandpass_shape_coeffs.py (pending)</span>
+      </div>
+    </header>
+
+    <section class="part" id="objective">
+      <div class="part-head"><h2 class="serif">Objective</h2><span class="status-pill done">Settled</span></div>
+      <p class="part-sub">What this is solving, and why it might actually be possible.</p>
+
+      <p><code>ssiaat</code> can already get a SPHEREx bandpass transmission curve at any
+        (band, central wavelength) — but only by loading the full
+        <code>spherex_tabular_bandpass</code> package, which pulls in ~75&nbsp;MB of parquet
+        tables. <code>Tabular_Bandpass_Lite</code> already solved this exact problem for the
+        <em>central wavelength alone</em>: six small hardcoded Chebyshev polynomials, zero
+        dependency. The question this round of work is answering: can the same trick work for
+        the <em>full curve</em>, by parameterizing it as <code>sed.hflatline</code> — a shape
+        already used elsewhere in <code>ssiaat</code> for spectral line and continuum models —
+        and fitting its shape parameters as smooth polynomials of wavelength, one set per band?</p>
+
+      <p>The user also asked a sharper question: <code>a_left</code>/<code>a_right</code> and
+        <code>dmu_left</code>/<code>dmu_right</code> look like they might be correlated —
+        could the parameter count be reduced before committing to six sets of polynomials?
+        That's answered in the investigation below.</p>
+    </section>
+
+    <section class="part wide" id="investigation">
+      <div class="part-head"><h2 class="serif">Investigation</h2><span class="status-pill done">4 findings</span></div>
+      <p class="part-sub">Measured directly against the real <code>Tabular_Bandpass</code> model, in the order they were found.</p>
+
+      <div class="callout finding">
+        <span class="finding-label">Finding 1 — the naive fit is degenerate, not noisy</span>
+        <p>Fitting <code>hflatline</code> per pixel with <code>mu_center_left</code> left free
+          looked reasonable at first (RMS ~3–5×10⁻⁴), but the individual shape parameters
+          swung by several percent between adjacent pixels. Measured cause:
+          <code>corr(dmu_left, a_left)</code> = <strong>+1.000</strong> within a 4-pixel window —
+          a perfectly flat optimization ridge, not a physical trend. Raising the polynomial
+          degree from 2 to 8 barely moved the residual, because there was no trend to fit.</p>
+      </div>
+
+      <div class="callout finding">
+        <span class="finding-label">Finding 2 — fixing the center costs nothing</span>
+        <p>The central wavelength at every pixel is already known exactly, from
+          <code>Tabular_Bandpass_Lite</code>'s own Chebyshev fit. Holding
+          <code>mu_center_left</code> fixed at that value instead of re-deriving it removes the
+          degeneracy — and measured fit quality is <strong>identical</strong> free vs. fixed:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Band</th><th>Row (iy)</th><th>RMS, free mu_center</th><th>RMS, fixed mu_center</th></tr></thead>
+            <tbody>
+              <tr><td class="num">1</td><td class="num">1024</td><td class="num">4.928547e-04</td><td class="num">4.928547e-04</td></tr>
+              <tr><td class="num">3</td><td class="num">1024</td><td class="num">3.488403e-04</td><td class="num">3.488403e-04</td></tr>
+              <tr><td class="num">5</td><td class="num">1024</td><td class="num">3.791362e-04</td><td class="num">3.791362e-04</td></tr>
+              <tr><td class="num">1</td><td class="num">1700</td><td class="num">4.794237e-04</td><td class="num">4.794237e-04</td></tr>
+              <tr><td class="num">4</td><td class="num">1000</td><td class="num">1.684991e-04</td><td class="num">1.684991e-04</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Measured live against the real package via <code>BandpassTool.fit_hflatline_at_iy</code>
+          (Part A's new method) — not a one-off spot check. This settles the design: the
+          per-pixel sweep in Part B fixes <code>mu_center</code>, it does not re-fit it.</p>
+      </div>
+
+      <div class="callout finding">
+        <span class="finding-label">Finding 3 — the parameter-reduction idea doesn't hold up</span>
+        <p>The hypothesis was that <code>a_left</code>≈<code>a_right</code> and
+          <code>dmu_left</code>≈<code>dmu_right</code> closely enough to fit one shared value
+          per pair instead of two. Measured per-band mean ratios (with <code>mu_center</code>
+          fixed): <code>a_left/a_right</code> ranges <strong>0.68–1.21</strong> across the six
+          bands; <code>dmu_left/dmu_right</code> ranges <strong>0.75–1.02</strong>. Neither
+          settles near a consistent value, and forcing symmetry costs up to
+          <strong>4.4×</strong> worse RMS in band 5 — a real accuracy loss for a ~30-float
+          storage saving that doesn't justify it. The six bands keep independent
+          <code>dmu_left</code>, <code>a_left</code>, <code>dmu_right</code>, <code>a_right</code>
+          polynomials.</p>
+      </div>
+
+      <div class="callout finding">
+        <span class="finding-label">Finding 4 — normalization and the dichroic gap</span>
+        <p>The real bandpass is normalized to unit <em>sum</em> (discrete), not unit
+          <em>integral</em> as the upstream docstring claims — so <code>amplitude</code> needs
+          its own smooth per-band fit, not a shortcut via <code>hflatline</code>'s own integral
+          (which has no closed form for the asymmetric case anyway). Separately: bands 3 and 4
+          have a real gap near the 2.42&nbsp;μm dichroic beam-splitter crossover, where the
+          curve is chopped by the dichroic response and stops looking like an
+          <code>hflatline</code> shape at all. Per this session's decision, the production
+          module will <strong>extrapolate with a warning</strong> there rather than raising.</p>
+      </div>
+    </section>
+
+    <section class="part wide" id="part-a">
+      <div class="part-head"><h2 class="serif">Part A — teach <code class="mono">fit_hflatline</code> a fixed center</h2><span class="status-pill done">Shipped</span></div>
+      <p class="part-sub"><span class="mono">src/ssiaat/spherex_table.py</span> — <code>BandpassTool.fit_hflatline</code>, <code>fit_hflatline_at_iy</code> (new)</p>
+
+      <p>Added a keyword-only <code>mu_center</code> parameter. Default <code>None</code>
+        preserves the original free-fit behavior exactly — every pre-existing test still
+        passes unchanged. Passing a float now holds <code>mu_center_left</code> fixed and drops
+        it from the optimizer's free parameter vector, per Finding 2 above.</p>
+
+      <p>Also added <code>fit_hflatline_at_iy(iy, ...)</code>, the row-indexed variant Part B's
+        bulk sweep needs: <code>get_bp_at_wvl</code> inverts wavelength → row through an
+        interpolator that rounds internally, so asking for a curve at a wavelength and
+        separately asking for "the same row's" analytic center can silently land on different
+        rows near template-quantization boundaries. <code>fit_hflatline_at_iy</code> instead
+        calls the bandpass model directly on one integer row for both — no inversion, no
+        mismatch.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Check</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td>Existing <code>test_bandpass_tool.py</code> tests (6)</td><td class="num">unchanged, passing</td></tr>
+            <tr><td>New tests added</td><td class="num">6</td></tr>
+            <tr><td>Full suite</td><td class="num">117 passed</td></tr>
+            <tr><td><code>ruff check src tests</code></td><td class="num">10 findings, all pre-existing/documented</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>New tests cover: fixed <code>mu_center_left</code> returned verbatim; fixing it at a
+        deliberately <em>wrong</em>-center value still matches free-fit quality (encodes
+        Finding 2 as a regression guard); a synthetic bandpass whose true shape parameters
+        drift smoothly with row, fit via <code>fit_hflatline_at_iy</code> and recovered to
+        1e-3/1% with zero sign flips (the "degeneracy is actually resolved" assertion, in a
+        form that can't pass by accident); an out-of-window <code>mu_center</code> raising
+        <code>ValueError</code>; and <code>symmetric=True</code> composing correctly with a
+        fixed center.</p>
+    </section>
+
+    <section class="part" id="part-b">
+      <div class="part-head"><h2 class="serif">Part B — derivation &amp; validation</h2><span class="status-pill pending">Not started</span></div>
+      <p class="part-sub"><span class="mono">examples/derive_bandpass_shape_coeffs.py</span> (new)</p>
+      <div class="callout pending-note">
+        <p>This section will fill in once the sweep runs: a full-resolution (2048 rows × 6
+          bands) fit using Part A's fixed-<code>mu_center</code> path, edge trimming around the
+          bands 3/4 dichroic gap, Chebyshev polynomial fits per parameter per band with an
+          explicit degree-selection procedure, and the actual per-band go/no-go numbers
+          (held-out curve RMS, integral error, centroid error) that Part C is gated on. Expect
+          diagnostic plots of every parameter vs. wavelength with its polynomial overlay, plus
+          curve-reconstruction overlays against the real tabulated bandpass.</p>
+      </div>
+    </section>
+
+    <section class="part" id="part-c">
+      <div class="part-head"><h2 class="serif">Part C — production module</h2><span class="status-pill gated">Gated on Part B</span></div>
+      <p class="part-sub"><span class="mono">src/ssiaat/bandpass_shape_lite.py</span> (new, per-band)</p>
+      <div class="callout pending-note">
+        <p>Built only for bands that clear Part B's validation targets, so this section may
+          ship five bands and flag one, or all six — that's an outcome to report, not assume.
+          Will cover the final <code>BandpassShapeLite</code> API, hardcoded coefficients with
+          their provenance, and pinned + real-package-comparison test results.</p>
+      </div>
+    </section>
+
+    <section class="part" id="verification">
+      <div class="part-head"><h2 class="serif">Verification checklist</h2><span class="status-pill pending">1 / 5</span></div>
+      <p class="part-sub">Mirrors the plan's verification section. Updated as each item is actually run, not assumed.</p>
+      <div class="checklist">
+        <div class="check-item">
+          <span class="check-box done">✓</span>
+          <span class="check-text">Part A: <span class="mono">pytest tests/test_bandpass_tool.py</span> — 12 passed; full suite 117 passed; sanity-checked live against the real package (table in Finding 2).</span>
+        </div>
+        <div class="check-item">
+          <span class="check-box pending"></span>
+          <span class="check-text">Part B: run <span class="mono">derive_bandpass_shape_coeffs.py</span>, read per-band validation report against targets.</span>
+        </div>
+        <div class="check-item">
+          <span class="check-box pending"></span>
+          <span class="check-text">Part C: <span class="mono">pytest tests/test_bandpass_shape_lite.py</span> — both tiers.</span>
+        </div>
+        <div class="check-item">
+          <span class="check-box pending"></span>
+          <span class="check-text">Full suite + <span class="mono">ruff check src tests</span> clean after Part C.</span>
+        </div>
+        <div class="check-item">
+          <span class="check-box pending"></span>
+          <span class="check-text">Visual spot-check: reconstructed vs. real curves per band, including the dichroic-gap extrapolation-warning path.</span>
+        </div>
+      </div>
+    </section>
+
+    <footer class="doc-foot">
+      <p>Source for this report: <span class="mono">reports/bandpass_shape_lite_report.html</span>
+        in the <span class="mono">ssiaat</span> repo. Plan: <span class="mono">jaunty-snacking-moore.md</span>.
+        Regenerated in place as each part lands — this is v1 (Objective + Investigation + Part A).</p>
+    </footer>
+  </main>
+</div>
