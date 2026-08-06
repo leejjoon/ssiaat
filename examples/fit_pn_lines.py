@@ -201,7 +201,17 @@ def make_plots(result_free, plot_dir):
     result = result_free
     model = result.model
 
-    # 1. Per-band overview: data + model + residual.
+    # Distinct, saturated colors per band -- data markers stay muted/gray
+    # regardless of band, so only the MODEL lines carry color and are
+    # never competing with same-toned data ink for attention.
+    band_color = {b: c for b, c in zip(sorted(model.spectra),
+                                       ["#d62728", "#1f77b4", "#2ca02c",
+                                        "#9467bd", "#ff7f0e", "#17becf"])}
+
+    # 1. Per-band overview: data + model + residual. Model drawn bold,
+    # on top (high zorder), in a color that reads clearly against the
+    # gray data -- the earlier orange-on-gray-at-lw-1.3 combination was
+    # too low-contrast to see where the curve tracks through dense data.
     bands = sorted(model.spectra)
     fig, axs = plt.subplots(len(bands), 2, figsize=(12, 3 * len(bands)),
                             gridspec_kw=dict(width_ratios=[3, 1]))
@@ -210,14 +220,15 @@ def make_plots(result_free, plot_dir):
         curve = result.model_curve(band)
         ax, axr = axs[row, 0], axs[row, 1]
         ax.errorbar(spec.wavelength, spec.value, yerr=spec.error, fmt=".",
-                   ms=3, color="0.5", ecolor="0.8", label="data")
-        ax.plot(spec.wavelength, curve, "-", color="C1", lw=1.3, label="model")
+                   ms=3, color="0.6", ecolor="0.82", zorder=1, label="data")
+        ax.plot(spec.wavelength, curve, "-", color=band_color[band], lw=2.2,
+               zorder=5, label="model")
         ax.set_title(f"band {band}"
                      + (" (flat-top caveat)" if band in FLAT_TOP_CAVEAT_BANDS else ""))
         ax.set_ylabel("rel")
         ax.legend(fontsize=7)
         resid = spec.value - curve
-        axr.plot(spec.wavelength, resid / spec.error, ".", ms=3, color="C0")
+        axr.plot(spec.wavelength, resid / spec.error, ".", ms=3, color=band_color[band])
         axr.axhline(0, color="0.7", lw=0.8)
         axr.set_ylabel("resid / err")
     axs[-1, 0].set_xlabel("wavelength [um]")
@@ -227,12 +238,16 @@ def make_plots(result_free, plot_dir):
     fig.savefig(plot_dir / "pn_lines_overview.png", dpi=130)
     plt.close(fig)
 
-    # 2. Per-line zoom, all contributing bands overlaid.
+    # 2. Per-line zoom, all contributing bands overlaid. Three distinct
+    # visual roles, ordered back-to-front: data (muted gray, zorder 1)
+    # -> full-band model (dashed black, zorder 3 -- context: shows any
+    # nearby line's leakage) -> this line's own isolated contribution
+    # (bold, saturated, zorder 5 -- what "detected"/"blended" refers to).
     line_table = result.line_table().set_index("line")
     n_lines = len(model.lines)
     ncols = 3
     nrows = -(-n_lines // ncols)
-    fig, axs = plt.subplots(nrows, ncols, figsize=(4.2 * ncols, 3.4 * nrows))
+    fig, axs = plt.subplots(nrows, ncols, figsize=(4.6 * ncols, 3.6 * nrows))
     for ax, (name, line) in zip(axs.ravel(), model.lines.items()):
         sub = result.amplitudes[result.amplitudes.line == name]
         for _, row in sub.iterrows():
@@ -242,19 +257,18 @@ def make_plots(result_free, plot_dir):
             window = (spec.wavelength > row.center - 4 * fwhm) & \
                      (spec.wavelength < row.center + 4 * fwhm)
             ax.errorbar(spec.wavelength[window], spec.value[window],
-                       yerr=spec.error[window], fmt=".", ms=3, alpha=0.7,
+                       yerr=spec.error[window], fmt=".", ms=4, color="0.65",
+                       ecolor="0.82", alpha=0.9, zorder=1,
                        label=f"band {band} data")
             wfine = np.linspace(spec.wavelength[window].min(),
                                spec.wavelength[window].max(), 300)
-            # Full-band model (light, for context -- shows any nearby
-            # line's leakage) and this line's own isolated contribution
-            # (bold -- what "detected"/"blended" actually refers to).
-            ax.plot(wfine, result.model_curve(band, wfine), "-", lw=0.8,
-                   color="0.6", label=f"band {band} full model")
+            ax.plot(wfine, result.model_curve(band, wfine), "--", lw=1.8,
+                   color="0.15", zorder=3, label=f"band {band} full model")
             ax.plot(wfine, result.model_curve(band, wfine, only_lines=[name]),
-                   "-", lw=1.4, label=f"band {band}: {name} only")
+                   "-", lw=2.6, color=band_color[band], zorder=5,
+                   label=f"band {band}: {name} only")
         ax.axvline(row.center if len(sub) else line.rest_wavelength,
-                  ls=":", color="0.4", lw=0.8)
+                  ls=":", color="0.4", lw=1.0, zorder=2)
         classification = (line_table.loc[name, "classification"]
                           if name in line_table.index else "?")
         title = f"{name} ({classification})"
