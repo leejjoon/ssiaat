@@ -30,6 +30,13 @@ dependencies = [
     # Revisit when Colab updates; s3 access goes through s3fs, not boto3.
     "fsspec[http]<=2025.3.0",
     "s3fs<=2025.3.0",
+    # s3fs<=2025.3.0 pulls aiobotocore (<3.0), which caps botocore<1.41.6.
+    # A newer botocore -- readily dragged in when coiled/boto3/awscli share
+    # the venv -- breaks aiobotocore's endpoint resolver
+    # (ClientArgsCreator.compute_endpoint_resolver_builtin_defaults() missing
+    # 's3_disable_express_session_auth'), which makes every S3 read/write fail
+    # (the finder, the dask HiPS pipeline). Pin it so it cannot drift up.
+    "botocore>=1.41.0,<1.41.6",
 ]
 
 [project.optional-dependencies]
