@@ -107,6 +107,21 @@ Data flows through five stages; each has one module and the public API
    pixel). `FitResults` wraps the coefficients as pixel-indexed `pd.Series`
    (so `.itable.to_image()` works directly on any coefficient) and carries
    the template header through so a fitted map round-trips like a stable.
+   `BandpassTool` (`spherex_table.py`) is a separate, smaller piece: given
+   a *central wavelength* instead of a detector pixel, it inverts the
+   central-column wavelength map (built from the bandpass model's
+   `central_bandpass_only=True` mode) to find the row, then fetches the
+   real bandpass there (`get_bp_at_wvl`; needs the full
+   `spherex_tabular_bandpass.Tabular_Bandpass`, not the Lite model, since
+   Lite only implements `central_bandpass_only`). `fit_hflatline` goes one
+   step further and fits `sed.hflatline`'s shape to that real bandpass by
+   least squares (amplitude included as a free parameter, not read off
+   the raw peak — see its docstring for why) — useful for getting a
+   compact analytic stand-in for a tabulated instrumental response. Its
+   docstring also covers a real parameter degeneracy worth knowing before
+   trusting individual fitted values: with asymmetric edges, only the edge
+   *positions* (`mu_center_left ∓ dmu_{left,right}`) are tightly
+   identified, not `mu_center_left`/`dmu_left`/`dmu_right` individually.
 
 `zodi_correction.py` and `tabular_bandpass_lite.py` are inputs consumed by
 stage 3 (zodiacal-light subtraction and detector-pixel → wavelength lookup,

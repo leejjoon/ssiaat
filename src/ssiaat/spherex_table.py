@@ -388,7 +388,107 @@ class BandpassTool:
             return interp1d(w1, t1)
         else:
             return w1, t1
-        
+
+    def fit_hflatline(self, center, *, symmetric=False, full_output=False):
+        """Fit sed.hflatline's shape to the real bandpass at `center`.
+
+        hflatline is meant for broad, genuinely flat-topped continuum/line
+        models elsewhere in `model.sed`, but the fit is excellent here too:
+        the narrow LVF bandpass (FWHM ~ center/R) is well matched by the
+        degenerate case where the plateau shrinks to (near) a point.
+
+        `amplitude` is fit jointly with the shape parameters (not just
+        read off the data's peak): hflatline is a product of two
+        tanh-based edges, and its own peak value is generically *below* 1
+        (how far below depends on dmu/a), so fixing amplitude from the raw
+        peak and fitting a peak-normalized target biases the recovered
+        shape to compensate. Letting `curve_fit` solve for amplitude too
+        avoids that bias.
+
+        When the two edges are asymmetric (the default), `mu_center_left`
+        trades off against `dmu_left`/`dmu_right`: shifting the shared
+        center while adjusting both half-widths to compensate reproduces
+        an almost identical curve, so individual parameter values can
+        wobble by ~1e-3 run to run even though the reconstructed curve and
+        `amplitude` are essentially exact. Only the edge *positions*
+        (``mu_center_left - dmu_left`` and ``mu_center_left + dmu_right``)
+        are tightly constrained. Pass ``symmetric=True`` if you need a
+        uniquely-identified `dmu`/`a` instead of a best-matching curve.
+
+        Parameters
+        ----------
+        center : float
+            Requested central wavelength (microns), central column
+            (ix=1024) -- same convention as `get_bp_at_wvl`.
+        symmetric : bool
+            Force dmu_right=dmu_left and a_right=a_left (3 free shape
+            parameters instead of 5). The real bandpass is usually
+            slightly asymmetric, so leave this False unless you need a
+            matched pair of edges.
+        full_output : bool
+            If True, also return a dict with the (w, t) curve, the fit
+            residual, and its RMS.
+
+        Returns
+        -------
+        dict with keys ``mu_center_left``, ``dmu_left``, ``a_left``,
+        ``dmu_right``, ``a_right`` (hflatline's constructor kwargs
+        verbatim -- pass ``**params`` after popping ``amplitude``) plus
+        ``amplitude``, the fitted peak scale. NOT an hflatline parameter;
+        kept alongside so ``amplitude * hflatline(**params)(w)``
+        approximates the original tabulated bandpass.
+        """
+        from scipy.optimize import curve_fit
+        from .model.sed import hflatline
+
+        w1, t1 = self.get_bp_at_wvl(center)
+        w = np.asarray(w1, dtype=float)
+        t = np.asarray(t1, dtype=float)
+
+        amplitude0 = float(t.max())
+
+        # Initial guess for the half-width: half the empirical FWHM.
+        above_half = w[t >= 0.5 * amplitude0]
+        fwhm0 = ((above_half.max() - above_half.min())
+                if len(above_half) >= 2 else (w.max() - w.min()) * 0.1)
+        dmu0 = max(fwhm0 / 2, 1e-4)
+        span = w.max() - w.min()
+
+        if symmetric:
+            def model_fn(mu, amplitude, mu_center, dmu, a):
+                return amplitude * hflatline(mu_center, dmu, a)(mu)
+            p0 = [amplitude0, center, dmu0, 1.0]
+            bounds = ([0, w.min(), 1e-5, 1e-3],
+                      [10 * amplitude0, w.max(), span, 10.0])
+        else:
+            def model_fn(mu, amplitude, mu_center, dmu_left, a_left,
+                         dmu_right, a_right):
+                return amplitude * hflatline(mu_center, dmu_left, a_left,
+                                             dmu_right=dmu_right,
+                                             a_right=a_right)(mu)
+            p0 = [amplitude0, center, dmu0, 1.0, dmu0, 1.0]
+            bounds = ([0, w.min(), 1e-5, 1e-3, 1e-5, 1e-3],
+                      [10 * amplitude0, w.max(), span, 10.0, span, 10.0])
+
+        popt, _ = curve_fit(model_fn, w, t, p0=p0, bounds=bounds, maxfev=20000)
+
+        if symmetric:
+            amplitude, mu_center, dmu, a = popt
+            params = dict(mu_center_left=mu_center, dmu_left=dmu, a_left=a,
+                         dmu_right=dmu, a_right=a)
+        else:
+            amplitude, mu_center, dmu_left, a_left, dmu_right, a_right = popt
+            params = dict(mu_center_left=mu_center, dmu_left=dmu_left,
+                         a_left=a_left, dmu_right=dmu_right, a_right=a_right)
+        params["amplitude"] = amplitude
+
+        if full_output:
+            resid = t - model_fn(w, *popt)
+            diagnostics = dict(w=w, t=t,
+                              rms=float(np.sqrt(np.mean(resid**2))))
+            return params, diagnostics
+        return params
+
 # knots = interp1d(w1, t1)
 
 # band = 5

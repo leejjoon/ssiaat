@@ -48,3 +48,66 @@ def test_init_with_tabular_bandpass_lite():
     assert tool.band == 5
     center_wvl = float(tool.wvl_to_iy.x.mean())
     assert 0.5 < center_wvl < 6.0  # SPHEREx wavelength range, microns
+
+
+class StubHflatlineBandpass:
+    """A bandpass model whose true shape IS an sed.hflatline, so
+    fit_hflatline has a known answer to recover exactly (up to fit
+    tolerance) rather than just "some small residual"."""
+
+    TRUE_PARAMS = dict(mu_center_left=4.05, dmu_left=0.02, a_left=1.2,
+                       dmu_right=0.015, a_right=0.9)
+    TRUE_AMPLITUDE = 0.08
+
+    def __call__(self, ix, iy, central_bandpass_only=False, array=None):
+        from ssiaat.model.sed import hflatline
+        iy = np.asarray(iy, dtype=float)
+        if iy.ndim > 0:
+            # __init__'s calibration sweep: a linear central-wavelength
+            # ramp is all that's needed to build wvl_to_iy.
+            return 3.9 + 0.0001 * iy, np.ones_like(iy)
+        center = 3.9 + 0.0001 * float(iy)
+        shape = hflatline(self.TRUE_PARAMS["mu_center_left"],
+                          self.TRUE_PARAMS["dmu_left"],
+                          self.TRUE_PARAMS["a_left"],
+                          dmu_right=self.TRUE_PARAMS["dmu_right"],
+                          a_right=self.TRUE_PARAMS["a_right"])
+        w = np.linspace(center - 0.1, center + 0.1, 400)
+        return w, self.TRUE_AMPLITUDE * shape(w)
+
+
+def test_fit_hflatline_recovers_known_shape():
+    tool = BandpassTool(StubHflatlineBandpass(), band=5)
+    true = StubHflatlineBandpass.TRUE_PARAMS
+
+    params = tool.fit_hflatline(true["mu_center_left"])
+
+    assert set(params) == {"mu_center_left", "dmu_left", "a_left",
+                           "dmu_right", "a_right", "amplitude"}
+    # amplitude and the reconstructed curve are essentially exact (see
+    # test_fit_hflatline_full_output_reports_small_rms).
+    np.testing.assert_allclose(params["amplitude"],
+                               StubHflatlineBandpass.TRUE_AMPLITUDE, atol=1e-6)
+    # With asymmetric edges, mu_center_left trades off against
+    # dmu_left/dmu_right (see fit_hflatline's docstring) -- only the edge
+    # *positions* are tightly identified, not the individual parameters.
+    true_left_edge = true["mu_center_left"] - true["dmu_left"]
+    true_right_edge = true["mu_center_left"] + true["dmu_right"]
+    fit_left_edge = params["mu_center_left"] - params["dmu_left"]
+    fit_right_edge = params["mu_center_left"] + params["dmu_right"]
+    np.testing.assert_allclose(fit_left_edge, true_left_edge, atol=1e-3)
+    np.testing.assert_allclose(fit_right_edge, true_right_edge, atol=1e-3)
+
+
+def test_fit_hflatline_symmetric_forces_matched_edges():
+    tool = BandpassTool(StubHflatlineBandpass(), band=5)
+    params = tool.fit_hflatline(4.05, symmetric=True)
+    assert params["dmu_left"] == params["dmu_right"]
+    assert params["a_left"] == params["a_right"]
+
+
+def test_fit_hflatline_full_output_reports_small_rms():
+    tool = BandpassTool(StubHflatlineBandpass(), band=5)
+    params, diagnostics = tool.fit_hflatline(4.05, full_output=True)
+    assert diagnostics["rms"] < 1e-6  # exact hflatline target, near-exact fit
+    assert diagnostics["w"].shape == diagnostics["t"].shape
