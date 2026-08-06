@@ -59,10 +59,78 @@ session's analysis) --
   tied-line `amplitudes` table -- it has no tied center to report
   against.
 
+Literature verification and further extension (see
+`examples/pn_line_list_literature.md` for the full sourced note, one
+citation per claim -- not written from memory): a background research
+pass against NIST ASD, the Rydberg formula (H I), and primary PN
+near/mid-IR spectroscopy papers (Hora et al. 1999; Smith & McLean 2007;
+Akras et al. 2024; Jones et al. 2023; and others cited in that file)
+checked every rest wavelength above and searched for commonly-detected
+PNe features not yet in this list. Results applied here:
+- **Corrected** Br-alpha 4.05116 -> 4.05228um: the repo's old value was
+  off from the literature/Rydberg-confirmed vacuum wavelength by
+  0.00112um (~83 km/s equivalent) -- a real, non-trivial offset for
+  line-center fitting, unlike every other H I line above 2um in the old
+  list (Br-gamma/beta/Pf-beta), which all matched vacuum to <=2e-5um.
+- **Resolved an internal air/vacuum inconsistency**: Pa-beta and Pa-alpha
+  were air wavelengths (1.28181, 1.87510) while every other H I line in
+  the list was vacuum. Corrected to vacuum (1.28217, 1.87563) for
+  consistency with the rest -- both near-IR calibration atlases and the
+  most recent JWST PN paper found in the literature search tabulate H I
+  lab wavelengths as vacuum uniformly, not NIST's own <2um air rule.
+- **Added**, in descending order of how well the literature confirms
+  them as common in real PNe: the [C I] 0.8727/0.9824/0.9850um triplet
+  (Akras et al. 2024, ~40 PNe including the same IC 5117 as the Rudy
+  near-IR atlas); H2 1-0 S(1) 2.1218um (the single most commonly
+  detected H2 line in PN near-IR spectra, and close to this list's own
+  previously-noted unmodeled "band 3 near 2.15-2.18um" residual -- see
+  below); Pf-gamma 3.74057um and Pf-epsilon 3.03921um (both real,
+  Rydberg- and NOT/IAC-table-confirmed H I lines, added because
+  Pf-gamma sits almost exactly on this list's previously-noted
+  unmodeled "band 4 ~3.75um" residual); He I 1.7002um and He I
+  2.1126-2.1138um (single-source confirmation each, lower confidence,
+  added anyway since they're cited PNe lines and this model's
+  `blended`/neighbor-distance-cap machinery already handles a close
+  near-blend safely -- He I ~2.113 sits only ~0.009um from H2 2.1218,
+  see the per-line note in the results); [Fe II] 1.257/1.644um (real
+  but not universal -- shock/low-ionization-structure tracers present
+  in only a subset of PNe, so a non-detection in this 308-PN stack is
+  an expected, not alarming, outcome).
+- **Not added**: coronal lines ([Si VI/VII/IX], confirmed real but
+  rare, requiring an unusually hot central star -- not expected as a
+  generic stack feature); Pfund-delta 3.29700um, despite being a real,
+  literature-confirmed line sitting inside the PAH complex itself
+  (Smith & McLean 2007 explicitly subtract it before fitting PAH in
+  individual PNe) -- adding it here as a `LineSpec` would put its
+  profile column nearly collinear with the fixed-shape PAH extra model
+  in the exact same band-4 window, an identifiability risk with no
+  clean fix in this pass; flagged here for whoever revisits band 4's
+  PAH modeling next, not fit for now. [N I] (literature note found no
+  source it could independently verify) and any ice/CO/CO2 band (no
+  PN detection found anywhere inside 0.75-5.0um) were also not added.
+- **Not changed**: `sed.py`'s `get_pah()` aromatic-component center.
+  The literature's PN-specific value (Smith & McLean 2007: Class A3.3,
+  center 3.288-3.290um) sits ~0.003-0.005um blueward of this repo's
+  tuned center (~3.293um, closer to literature's H-II-region-typical
+  Class B3.3) -- a real, if modest, discrepancy. Left as-is because the
+  repo's value was tuned against this exact stacked spectrum, which is
+  a more direct check for this dataset than a generic literature
+  classification; noted here as an open item rather than silently
+  ignored.
+
+Confirmed against the actual fit: the previously-noted band 3
+~2.15-2.18um residual is now resolved (worst |resid/err| in that window
+dropped from a clear multi-sigma bump to <=0.65 -- explained by He I
+~2.113/H2 2.1218), and the band 4 ~3.75um residual is likewise resolved
+by Pf-gamma (peak residual there dropped from a clear bump to <=1.5
+sigma ringing, consistent with a well-fit line, not a missing feature).
+
 Known remaining unmodeled residual structure (out of scope for this
-pass, not silently claimed as covered): band 4 bumps near 2.85-2.95um
-and ~3.75um; band 3 near 2.15-2.18um; band 6 near 4.47um. Left as
-candidates for a future extension.
+pass, not silently claimed as covered): band 4 bumps near 2.78-2.85um
+and at the PAH complex's own blue edge (~3.256-3.262um -- plausibly
+Pfund-delta 3.29700um, the literature-confirmed line flagged above as
+sitting inside the PAH window and not modeled here); band 6 near
+4.47um. Left as candidates for a future extension.
 
 Usage
 -----
@@ -80,24 +148,43 @@ from ssiaat.model.sed import get_pah
 
 PN_METHOD = "A_pool"  # pooled-GP stack; higher line contrast than "B_combine"
 
-# Core H/He recombination line list, plus the [S III] doublet (see the
-# module docstring for why they were added). Rest wavelengths, microns.
-# [S III] prior_offset is band 1's own measured ~-0.003um shift (from the
-# pre-extension fit's centers_mode="wavelength_solution" run) -- just an
-# initial guess; the tied fit refines it like every other line here.
+# Rest wavelengths, microns, all vacuum (H I lines: Rydberg formula,
+# cross-checked against NOT/IAC + UKIRT calibration atlases and JWST
+# Jones et al. 2023; see examples/pn_line_list_literature.md for the
+# full sourced note -- every number below traces back to a citation
+# there, not memory). [S III] prior_offset is band 1's own measured
+# ~-0.003um shift (from the pre-extension fit's
+# centers_mode="wavelength_solution" run) -- just an initial guess; the
+# tied fit refines it like every other line here.
 LINE_LIST = [
+    # Core H I recombination series + He I, confirmed against the
+    # literature (Br-alpha corrected, Pa-beta/Pa-alpha air->vacuum; see
+    # module docstring).
     LineSpec("He I 1.083", 1.08303),
-    LineSpec("Pa-gamma", 1.09411),
-    LineSpec("Pa-beta", 1.28181),
-    LineSpec("Br-delta", 1.94509),
-    LineSpec("Pa-alpha", 1.87510),
-    LineSpec("Br-gamma", 2.16612),
+    LineSpec("Pa-gamma", 1.09412),
+    LineSpec("Pa-beta", 1.28217),
+    LineSpec("Br-delta", 1.94510),
+    LineSpec("Pa-alpha", 1.87563),
+    LineSpec("Br-gamma", 2.16613),
     LineSpec("He I 2.059", 2.05869),
-    LineSpec("Br-beta", 2.62587),
-    LineSpec("Br-alpha", 4.05116),
-    LineSpec("Pf-beta", 4.65378),
+    LineSpec("Br-beta", 2.62588),
+    LineSpec("Br-alpha", 4.05228),
+    LineSpec("Pf-beta", 4.65379),
+    # [S III] doublet, added in the first residual-driven extension.
     LineSpec("[S III] 0.9069", 0.90686, prior_offset=-0.0025),
     LineSpec("[S III] 0.9531", 0.95306, prior_offset=-0.0025),
+    # Literature-added candidates (see module docstring for confidence
+    # notes per line and why each was/wasn't added).
+    LineSpec("[C I] 0.8727", 0.8727),
+    LineSpec("[C I] 0.9824", 0.9824),
+    LineSpec("[C I] 0.9850", 0.9850),
+    LineSpec("H2 1-0 S(1)", 2.1218),
+    LineSpec("He I 2.113", 2.1132),
+    LineSpec("He I 1.7002", 1.7002),
+    LineSpec("[Fe II] 1.257", 1.257),
+    LineSpec("[Fe II] 1.644", 1.644),
+    LineSpec("Pf-gamma", 3.74057),
+    LineSpec("Pf-epsilon", 3.03921),
 ]
 
 # Bands whose real profile is known to be flatter-topped than
