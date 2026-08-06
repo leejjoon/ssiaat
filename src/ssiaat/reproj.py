@@ -165,6 +165,17 @@ def _convert_hdul_to_df(hdul, bandpass_model, band, metadata):
         **metadata
     ))
 
+    # Metadata scalars (e.g. pipe_run) broadcast to constant string columns -- a
+    # full-length copy of one repeated value. Cast such string columns to
+    # categorical (int codes + one category) to slash the peak memory of the
+    # concat/sort in merge_to_stable, and dictionary-encode them in parquet.
+    for k in metadata:
+        dt = df[k].dtype
+        if not (pd.api.types.is_numeric_dtype(dt)
+                or pd.api.types.is_bool_dtype(dt)
+                or isinstance(dt, pd.CategoricalDtype)):
+            df[k] = df[k].astype("category")
+
     return df
 
 class SphxReprojector:
