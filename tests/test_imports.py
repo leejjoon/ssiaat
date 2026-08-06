@@ -20,6 +20,7 @@ SUBMODULES = [
     "ssiaat.zodi_correction",
     "ssiaat.model",
     "ssiaat.model.fitting",
+    "ssiaat.model.multiband_lines",
     "ssiaat.model.sed",
     "ssiaat.model.vectorized_lstsq",
 ]

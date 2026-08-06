@@ -132,6 +132,34 @@ Data flows through five stages; each has one module and the public API
    avoiding a wavelength→row inversion that can land one row off near
    template-quantization boundaries.
 
+`model/multiband_lines.py`'s `MultiBandLineModel` is a different shape of
+fitting problem `Model`/`vectorized_lstsq` can't express: ONE spectrum
+split across bands that may not share a wavelength solution, where a
+line's center should be ONE value shared across every band it appears
+in while its amplitude is free per band (`Model`'s per-group solves are
+independent by construction — nothing ties a parameter across them).
+Solved as variable projection: `scipy.optimize.least_squares` searches
+only the (few) tied centers/per-band offsets, with a fresh weighted
+linear solve for every amplitude+baseline coefficient inside each
+residual evaluation. The line-profile SHAPE is never an independent free
+parameter — always read off `BandpassShapeLite.params(trial_center,
+band)` at whatever the current trial center is, per `fit_hflatline`'s
+degeneracy warning above. Two real, non-obvious things it protects
+against, both discovered by prototyping this against a real stacked
+spectrum: (1) correlated stack noise makes naive `1/error**2`-weighted
+errors wrong by a large, band-dependent factor — `null_mad` recalibrates
+via an empirical residual-scan null, not an assumed-covariance GLS
+correction (tried, numerically unstable here); (2) a weak/absent line's
+blind initial-position search can wander into a much stronger nearby
+line's wing and lock onto that instead — both `prescan` and the final
+fit bounds cap a line's search window at 0.4x its distance to the
+nearest other candidate line in the same band. `blended=True` in the
+results flags when two lines' fitted centers land within half a
+resolution element of each other anyway (a real, not fixable,
+identifiability limit — e.g. He I 1.083µm and Pa-γ 1.094µm in SPHEREx
+band 1) — their individual amplitudes are then design-matrix-collinear
+and shouldn't be trusted independently, only summed.
+
 `zodi_correction.py` and `tabular_bandpass_lite.py` are inputs consumed by
 stage 3 (zodiacal-light subtraction and detector-pixel → wavelength lookup,
 respectively); `tabular_bandpass_lite.py` is a frozen from-coefficients
