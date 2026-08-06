@@ -45,6 +45,9 @@ test = [
     "pytest-asyncio",
     "pyarrow",
 ]
+lint = [
+    "ruff",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -58,3 +61,16 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 ssiaat = ["ZodiScaling70Channels_0329/*.csv"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# Deliberately narrow: pyflakes (F, real bugs -- unused/undefined names) plus
+# a handful of pycodestyle error checks (E4/E7/E9). Ruff's own default rule
+# set is much broader (bugbear, tryceratops, flake8-async, ...) and flags
+# patterns this codebase uses on purpose (e.g. the broad `except Exception`
+# catches in AsyncCollector/finder that exist specifically so one bad item
+# can't abort a bulk run -- see CLAUDE.md). Widen this only deliberately.
+select = ["E4", "E7", "E9", "F"]

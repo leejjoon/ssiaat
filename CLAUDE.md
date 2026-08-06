@@ -18,23 +18,34 @@ the Coiled/dask HiPS pipeline. Activate it or prefix commands with
 
 ```sh
 uv venv --python 3.12 .venv         # one-time creation
-uv pip install -e '.[test]' --python .venv   # editable install + test deps
+uv pip install -e '.[test,lint]' --python .venv   # editable install + test + lint deps
 .venv/bin/pytest                    # slow-marked tests are excluded by default (see pyproject addopts)
 .venv/bin/pytest -m slow            # run only the slow tests
 .venv/bin/pytest tests/test_stable.py::test_make_simple_image   # single test
 .venv/bin/pytest -k make_simple     # by name substring
+.venv/bin/ruff check src tests      # lint (see below)
 ```
 
-CI (`.github/workflows/tests.yml`) does exactly `pip install -e .[test]` then
-`pytest -m "not slow"` on Python 3.12 — reproduce that when checking a change
-is CI-clean.
+CI (`.github/workflows/tests.yml`) does exactly `pip install -e .[test,lint]`,
+`pytest -m "not slow"`, then `ruff check src tests` on Python 3.12 —
+reproduce that when checking a change is CI-clean. The `ruff` step runs with
+`continue-on-error: true`: findings are surfaced but never fail the build.
 
 This repo's `pyproject.toml` pins `botocore<1.41.6` for the same
 aiobotocore/s3fs reason documented in the parent workspace's `CLAUDE.md`;
 a fresh `./.venv` resolves it correctly on its own.
 
-No linter/formatter is configured in this repo (no ruff/flake8/black config)
-— match the surrounding code's style rather than reaching for a tool.
+`ruff` is configured (`[tool.ruff]` in `pyproject.toml`) with a deliberately
+narrow rule set — pyflakes (`F`) plus a few pycodestyle error checks
+(`E4`/`E7`/`E9`) — not ruff's much broader defaults (bugbear,
+tryceratops, flake8-async, ...), which flag patterns this codebase uses on
+purpose (see "never abort a bulk run" below). Widen `select` deliberately,
+not by accident. A handful of pre-existing findings are left unfixed on
+purpose: `E402` (module-level imports placed mid-file at `# %%`
+notebook-style cell markers) and `F821`/`F841` inside `model/sed.py`'s
+already-dead `channel_model_deprecated`/`test()` demo code and one
+validating-but-unused `det_id` lookup in `reproj.py`'s `ingest_hdul` — check
+`ruff check src tests` output before assuming a fresh finding is new.
 
 ## Architecture: the pipeline, in order
 
