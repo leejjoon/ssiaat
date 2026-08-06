@@ -15,11 +15,27 @@ ssiaat dependency -- this script is provenance for hardcoded coefficients,
 not something ssiaat's test suite or runtime imports). `--plot` additionally
 needs matplotlib (also not declared).
 
+The real tabulated bandpass carries a genuine, low-level (~0.01-0.1% of
+peak) broadband transmission floor across the *entire* band -- not a
+fitting artifact, confirmed by inspecting individual rows on a log scale.
+hflatline (exactly zero outside its core) cannot represent it at any
+polynomial degree, and it is small enough to barely affect curve RMS while
+being large enough (because integral/centroid error are linear in the
+residual and weighted by distance from center) to fail those two metrics
+outright in several bands. The fix used here: fit a small additive
+`floor0 + floor1*(w - mu_center)` term jointly with the hflatline shape
+(2 extra free parameters per row, `floor0`/`floor1`, each getting their
+own low-order polynomial vs wavelength just like the shape parameters) --
+confirmed on the worst row (band 1) to drive both integral and centroid
+error to ~0 while *improving* curve RMS. Disable with `--no-floor` to
+reproduce the original (worse) hflatline-only numbers.
+
 Usage
 -----
     .venv/bin/python examples/derive_bandpass_shape_coeffs.py
     .venv/bin/python examples/derive_bandpass_shape_coeffs.py --bands 3 4 --plot
     .venv/bin/python examples/derive_bandpass_shape_coeffs.py --out sweep.npz
+    .venv/bin/python examples/derive_bandpass_shape_coeffs.py --no-floor  # for comparison
 
 Prints, per band: the trim window, the degree-selection table, the final
 validation report (the Part C go/no-go gate), and correlation/ratio
@@ -34,6 +50,7 @@ import time
 
 import numpy as np
 from numpy.polynomial.chebyshev import Chebyshev
+from scipy.optimize import curve_fit
 
 from spherex_tabular_bandpass import Tabular_Bandpass
 from ssiaat.spherex_table import BandpassTool
@@ -43,7 +60,11 @@ from ssiaat.model.sed import hflatline
 BANDS = (1, 2, 3, 4, 5, 6)
 IX = 1024
 N_IY = 2048
-PARAM_NAMES = ("amplitude", "dmu_left", "a_left", "dmu_right", "a_right")
+SHAPE_PARAM_NAMES = ("amplitude", "dmu_left", "a_left", "dmu_right", "a_right")
+FLOOR_PARAM_NAMES = ("floor0", "floor1")
+# Set for real in main() based on --floor/--no-floor; this default (floor on)
+# lets the module-level functions below be written against one name.
+PARAM_NAMES = SHAPE_PARAM_NAMES + FLOOR_PARAM_NAMES
 
 # Degree-selection gate (see the plan doc / build report for rationale).
 DEGREES = range(2, 9)
@@ -62,20 +83,70 @@ OUTLIER_MAD_MULT = 8
 
 
 # --------------------------------------------------------------------------
+# Per-row fit: hflatline (mu_center fixed), optionally + additive floor
+# --------------------------------------------------------------------------
+
+def fit_row(tool, band, iy, use_floor):
+    """Fit one detector row directly (bypasses BandpassTool.fit_hflatline_at_iy
+    when use_floor=True, since that method doesn't know about the floor term
+    -- this is deliberately a standalone prototype in the derivation script,
+    not yet promoted into production `fit_hflatline` code)."""
+    w1, t1 = tool.bandpass_model(1024, int(iy), array=band)
+    w1 = np.asarray(w1, dtype=float)
+    t1 = np.asarray(t1, dtype=float)
+    wc, _ = tool.bandpass_model(1024, int(iy), array=band, central_bandpass_only=True)
+    wc = float(np.asarray(wc))
+
+    amplitude0 = float(t1.max())
+    above_half = w1[t1 >= 0.5 * amplitude0]
+    fwhm0 = ((above_half.max() - above_half.min())
+            if len(above_half) >= 2 else (w1.max() - w1.min()) * 0.1)
+    dmu0 = max(fwhm0 / 2, 1e-4)
+    span = w1.max() - w1.min()
+
+    if use_floor:
+        def model_fn(mu, amplitude, dmu_left, a_left, dmu_right, a_right,
+                     floor0, floor1):
+            return (amplitude * hflatline(wc, dmu_left, a_left, dmu_right=dmu_right,
+                                          a_right=a_right)(mu)
+                    + floor0 + floor1 * (mu - wc))
+        p0 = [amplitude0, dmu0, 1.0, dmu0, 1.0, 1e-4, 0.0]
+        bounds = ([0, 1e-5, 1e-3, 1e-5, 1e-3, -1e-2, -1e-1],
+                  [10 * amplitude0, span, 10.0, span, 10.0, 1e-2, 1e-1])
+    else:
+        def model_fn(mu, amplitude, dmu_left, a_left, dmu_right, a_right):
+            return amplitude * hflatline(wc, dmu_left, a_left, dmu_right=dmu_right,
+                                         a_right=a_right)(mu)
+        p0 = [amplitude0, dmu0, 1.0, dmu0, 1.0]
+        bounds = ([0, 1e-5, 1e-3, 1e-5, 1e-3],
+                  [10 * amplitude0, span, 10.0, span, 10.0])
+
+    popt, _ = curve_fit(model_fn, w1, t1, p0=p0, bounds=bounds, maxfev=20000)
+    names = ("amplitude", "dmu_left", "a_left", "dmu_right", "a_right")
+    if use_floor:
+        names = names + FLOOR_PARAM_NAMES
+    params = dict(zip(names, popt))
+    params["mu_center_left"] = wc
+
+    resid = t1 - model_fn(w1, *popt)
+    diag = dict(w=w1, t=t1, resid=resid, rms=float(np.sqrt(np.mean(resid**2))))
+    return params, diag
+
+
+# --------------------------------------------------------------------------
 # Sweep
 # --------------------------------------------------------------------------
 
-def sweep_band(tool, band):
-    """Fit hflatline (mu_center fixed to the analytic value) at every row
-    of the central column. Returns (iy_arr, out) where `out` maps each
-    recorded quantity to a length-N_IY array (NaN where the fit failed --
-    never let one bad row abort the sweep)."""
+def sweep_band(tool, band, use_floor):
+    """Fit every row of the central column. Returns (iy_arr, out) where
+    `out` maps each recorded quantity to a length-N_IY array (NaN where the
+    fit failed -- never let one bad row abort the sweep)."""
     iy_arr = np.arange(N_IY)
     out = {k: np.full(N_IY, np.nan) for k in ("wc", "tsum", "peak", "rms", *PARAM_NAMES)}
     n_failed = 0
     for iy in iy_arr:
         try:
-            params, diag = tool.fit_hflatline_at_iy(int(iy), full_output=True)
+            params, diag = fit_row(tool, band, int(iy), use_floor)
         except Exception:
             n_failed += 1
             continue
@@ -163,7 +234,8 @@ def reconstruct_curve(polys, wc_row, w):
     pred = {k: float(polys[k](wc_row)) for k in PARAM_NAMES}
     shape = hflatline(wc_row, pred["dmu_left"], pred["a_left"],
                       dmu_right=pred["dmu_right"], a_right=pred["a_right"])
-    return pred["amplitude"] * shape(w)
+    floor = pred.get("floor0", 0.0) + pred.get("floor1", 0.0) * (w - wc_row)
+    return pred["amplitude"] * shape(w) + floor
 
 
 def validate_rows(tool, band, polys, wc_arr, iy_list):
@@ -194,8 +266,8 @@ def validate_rows(tool, band, polys, wc_arr, iy_list):
 # Per-band pipeline
 # --------------------------------------------------------------------------
 
-def process_band(band, plot_dir=None):
-    print(f"\n=== Band {band} ===")
+def process_band(band, plot_dir=None, use_floor=True):
+    print(f"\n=== Band {band} (floor term {'ON' if use_floor else 'OFF'}) ===")
     t_start = time.time()
 
     bp = Tabular_Bandpass()
@@ -215,7 +287,7 @@ def process_band(band, plot_dir=None):
     np.testing.assert_allclose(w_lite, w_full, atol=1e-8, rtol=0,
                                err_msg=f"Lite vs. full central-wavelength mismatch, band {band}")
 
-    iy_arr, out = sweep_band(tool, band)
+    iy_arr, out = sweep_band(tool, band, use_floor)
     keep = trim_mask(out)
     if keep.sum() < 32:
         print(f"  !!! FAIL: only {keep.sum()} rows survived trimming -- band {band} not gated")
@@ -315,6 +387,13 @@ def process_band(band, plot_dir=None):
     print(f"  [reduction check] a_L/a_R mean={ratio_a.mean():.3f} std={ratio_a.std():.3f}"
           f"   dmu_L/dmu_R mean={ratio_dmu.mean():.3f} std={ratio_dmu.std():.3f}")
 
+    if use_floor:
+        f0, f1 = out["floor0"][keep], out["floor1"][keep]
+        amp = out["amplitude"][keep]
+        print(f"  [floor] floor0/amplitude mean={np.mean(f0/amp):.4f}"
+              f"  floor1/amplitude mean={np.mean(f1/amp):.4f}"
+              f"  (both as a fraction of the peak, for scale)")
+
     print(f"  band {band} done in {time.time() - t_start:.1f}s")
 
     result = dict(
@@ -400,7 +479,8 @@ def plot_band(band, result, plot_dir):
     tool = BandpassTool(Tabular_Bandpass(), band=band)
     for ax, iy in zip(axs, sample_iy):
         w1, t1 = tool.bandpass_model(1024, iy, array=band)
-        w1 = np.asarray(w1, float); t1 = np.asarray(t1, float)
+        w1 = np.asarray(w1, float)
+        t1 = np.asarray(t1, float)
         model = reconstruct_curve(result["polys"], float(wc[iy]), w1)
         ax.plot(w1, t1, ".", ms=2, color="0.5", label="real")
         ax.plot(w1, model, "-", color="C1", label="poly reconstruction")
@@ -464,12 +544,19 @@ def main():
     ap.add_argument("--plot", action="store_true", help="write diagnostic PNGs")
     ap.add_argument("--plot-dir", default="bandpass_shape_diagnostics")
     ap.add_argument("--out", default=None, help="dump the raw per-band sweep to this .npz")
+    ap.add_argument("--no-floor", dest="floor", action="store_false",
+                    help="disable the additive floor term (reproduces the"
+                         " original hflatline-only numbers, for comparison)")
     args = ap.parse_args()
+
+    global PARAM_NAMES
+    PARAM_NAMES = SHAPE_PARAM_NAMES + FLOOR_PARAM_NAMES if args.floor else SHAPE_PARAM_NAMES
 
     t0 = time.time()
     results = {}
     for band in args.bands:
-        results[band] = process_band(band, plot_dir=args.plot_dir if args.plot else None)
+        results[band] = process_band(band, plot_dir=args.plot_dir if args.plot else None,
+                                     use_floor=args.floor)
     print(f"\ntotal wall time: {time.time() - t0:.1f}s")
 
     emit_coeff_dict(results)
