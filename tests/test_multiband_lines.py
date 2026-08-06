@@ -131,6 +131,47 @@ def test_model_curve_matches_data_noiseless(noiseless_setup):
         np.testing.assert_allclose(curve, spec.value, atol=1e-4)
 
 
+def test_extra_models_fixed_shape_recovered_and_reported_separately():
+    """A genuinely broad feature (e.g. a PAH complex) doesn't fit the
+    "unresolved line broadened by the instrument" assumption LineSpec
+    makes -- BandSpectrum.extra_models is for exactly this: a FIXED
+    shape (position and width never move) with its own free per-band
+    amplitude, reported separately from the tied-line `amplitudes`."""
+    from ssiaat.model.sed import hflattop
+
+    extra_shape = hflattop(1.05, 1.15, a=0.8)  # a broad feature, not from BandpassShapeLite
+    extra_amp = 4.0
+
+    val1 = _true_value(1, BAND1_GRID, [(TRUE_CENTER_A, AMP_A_BAND1)], BASELINE1)
+    val1 = val1 + extra_amp * extra_shape(BAND1_GRID)
+    err1 = np.full_like(BAND1_GRID, 0.05)
+
+    lines = [LineSpec("A", TRUE_CENTER_A)]
+    spectra = [BandSpectrum(1, BAND1_GRID, val1, err1, baseline_degree=len(BASELINE1) - 1,
+                            extra_models=(("broad_feature", extra_shape),))]
+
+    model = MultiBandLineModel(lines, spectra)
+    result = model.fit()
+
+    np.testing.assert_allclose(result.centers["A"], TRUE_CENTER_A, atol=1e-4)
+    amp_a = result.amplitudes.loc[result.amplitudes.line == "A", "amplitude"].iloc[0]
+    np.testing.assert_allclose(amp_a, AMP_A_BAND1, rtol=1e-4)
+
+    # Reported separately, not mixed into the tied-line `amplitudes` table.
+    assert "broad_feature" not in result.amplitudes["line"].values
+    extra = result.extra_model_amplitudes
+    row = extra[(extra.name == "broad_feature") & (extra.band == 1)].iloc[0]
+    np.testing.assert_allclose(row.amplitude, extra_amp, rtol=1e-4)
+
+    curve = result.model_curve(1)
+    np.testing.assert_allclose(curve, val1, atol=1e-4)
+    # Isolating the tied line alone must exclude the extra model's contribution.
+    line_only = result.model_curve(1, only_lines=["A"], include_baseline=False)
+    a_only_shape, _, _ = _profile_shape(SHAPE, TRUE_CENTER_A, 1, allow_extrapolated=True)
+    expected_line_only = AMP_A_BAND1 * _normalized_profile(TRUE_CENTER_A, **a_only_shape)(BAND1_GRID)
+    np.testing.assert_allclose(line_only, expected_line_only, atol=1e-4)
+
+
 # --------------------------------------------------------------------------
 # Test 2: noisy recovery, per-band offset, error calibration
 # --------------------------------------------------------------------------

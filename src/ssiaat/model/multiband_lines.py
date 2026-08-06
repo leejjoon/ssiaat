@@ -79,12 +79,26 @@ class LineSpec:
 @dataclass(frozen=True)
 class BandSpectrum:
     """One band's data. `wavelength` must be 1D, finite, and monotonic
-    increasing within the band (NOT necessarily across bands)."""
+    increasing within the band (NOT necessarily across bands).
+
+    `extra_models` is for FIXED-shape features that are not appropriate
+    to fit as a tied `LineSpec` -- most importantly a genuinely broad
+    astrophysical feature (e.g. a PAH complex) whose own intrinsic width
+    is comparable to or wider than the instrumental resolution, so it is
+    not "an unresolved line broadened by the instrument's bandpass" the
+    way `LineSpec` assumes. Each entry is `(name, callable)`, `callable`
+    a fixed function of wavelength (e.g. `ssiaat.model.sed.hflattop`);
+    unlike a `LineSpec`'s profile, its shape and position never move
+    during the fit -- only its per-band linear amplitude is solved for,
+    reported separately from `amplitudes` in `MultiBandLineFitResults`
+    (see `extra_model_amplitudes`) since it has no tied center to report
+    against."""
     band: int
     wavelength: np.ndarray
     value: np.ndarray
     error: np.ndarray
     baseline_degree: int = 3
+    extra_models: tuple = ()
 
     def __post_init__(self):
         w = np.asarray(self.wavelength, dtype=float)
@@ -377,11 +391,16 @@ class MultiBandLineModel:
         return line.initial_center + theta_deltas.get(band, 0.0)
 
     def _band_design(self, band, theta_centers, theta_deltas):
+        """Returns (X, line_names, extra_names, extrap_flags). Column
+        order is always [tied lines..., extra fixed-shape models...,
+        baseline...] -- `_build_results` slices `coeffs` by these three
+        counts rather than re-deriving them, so keep this order in sync
+        with any caller that indexes into `coeffs` positionally."""
         spec = self.spectra[band]
         lines_here = self._assignment.loc[
             (self._assignment.band == band) & self._assignment.assigned, "line"].tolist()
 
-        cols, names, extrap_flags = [], [], {}
+        cols, line_names, extrap_flags = [], [], {}
         for name in lines_here:
             c = self._effective_center(name, theta_centers, theta_deltas, band)
             shape_kwargs, fwhm, extrapolated = _profile_shape(
@@ -389,27 +408,33 @@ class MultiBandLineModel:
             profile = (_normalized_profile(c, **shape_kwargs) if self.normalize_profiles
                       else hflatline(c, **shape_kwargs))
             cols.append(profile(spec.wavelength))
-            names.append(name)
+            line_names.append(name)
             extrap_flags[name] = extrapolated
+
+        extra_names = []
+        for name, fn in spec.extra_models:
+            cols.append(np.asarray(fn(spec.wavelength), dtype=float))
+            extra_names.append(name)
 
         wavelength_span = (spec.wavelength.min(), spec.wavelength.max())
         baseline = _baseline_vander(spec.wavelength, wavelength_span, spec.baseline_degree)
         for d in range(spec.baseline_degree + 1):
             cols.append(baseline[:, d])
-            names.append(f"baseline_{d}")
 
         X = np.column_stack(cols) if cols else np.zeros((len(spec.wavelength), 0))
-        return X, names, extrap_flags
+        return X, line_names, extra_names, extrap_flags
 
     def _solve_band(self, band, theta_centers, theta_deltas):
         spec = self.spectra[band]
-        X, names, extrap_flags = self._band_design(band, theta_centers, theta_deltas)
+        X, line_names, extra_names, extrap_flags = self._band_design(
+            band, theta_centers, theta_deltas)
         if X.shape[1] == 0:
             return dict(coeffs=np.array([]), cov=np.zeros((0, 0)),
-                       resid=spec.value.copy(), names=names, extrap_flags=extrap_flags)
+                       resid=spec.value.copy(), line_names=line_names,
+                       extra_names=extra_names, extrap_flags=extrap_flags)
         coeffs, cov, resid = _weighted_lstsq(X, spec.value, spec.weight)
-        return dict(coeffs=coeffs, cov=cov, resid=resid, names=names,
-                   extrap_flags=extrap_flags)
+        return dict(coeffs=coeffs, cov=cov, resid=resid, line_names=line_names,
+                   extra_names=extra_names, extrap_flags=extrap_flags)
 
     # -- Nonlinear residual over ALL bands --------------------------------
 
@@ -507,16 +532,23 @@ class MultiBandLineModel:
 
     def _build_results(self, theta_centers, theta_deltas, at_bound, prescan_df):
         amp_rows = []
+        extra_rows = []
         band_solutions = {}
         for band in self.spectra:
             solved = self._solve_band(band, theta_centers, theta_deltas)
             band_solutions[band] = solved
             spec = self.spectra[band]
-            names = solved["names"]
             coeffs, cov, resid = solved["coeffs"], solved["cov"], solved["resid"]
-            n_lines = len(names) - (spec.baseline_degree + 1)
+            n_lines = len(solved["line_names"])
+            for j, extra_name in enumerate(solved["extra_names"]):
+                i = n_lines + j
+                amp = float(coeffs[i])
+                err_formal = float(np.sqrt(max(cov[i, i], 0.0)))
+                extra_rows.append(dict(
+                    name=extra_name, band=band, amplitude=amp, err_formal=err_formal,
+                    snr_formal=(amp / err_formal if err_formal > 0 else np.nan)))
             for i in range(n_lines):
-                line_name = names[i]
+                line_name = solved["line_names"][i]
                 c = self._effective_center(line_name, theta_centers, theta_deltas, band)
                 amp = float(coeffs[i])
                 err_formal = float(np.sqrt(max(cov[i, i], 0.0)))
@@ -564,9 +596,12 @@ class MultiBandLineModel:
 
         centers = pd.Series(theta_centers, name="center") if theta_centers else None
         deltas = pd.Series(theta_deltas, name="delta") if theta_deltas else None
+        extra_model_amplitudes = pd.DataFrame(
+            extra_rows, columns=["name", "band", "amplitude", "err_formal", "snr_formal"])
 
         return MultiBandLineFitResults(
             model=self, centers=centers, deltas=deltas, amplitudes=amplitudes,
+            extra_model_amplitudes=extra_model_amplitudes,
             null_mad=null_mad, chi2_red=pd.Series(chi2_red, name="chi2_red"),
             band_solutions=band_solutions, prescan=prescan_df,
         )
@@ -643,11 +678,15 @@ class MultiBandLineFitResults:
     band landed within half a FWHM of another line's -- their individual
     amplitudes are then near-degenerate, from design-matrix collinearity
     rather than any fitting mistake, and shouldn't be trusted
-    independently, only in combination)."""
+    independently, only in combination). `extra_model_amplitudes` is the
+    separate table for each `BandSpectrum.extra_models` entry (band,
+    name, amplitude, err_formal, snr_formal) -- these have no tied
+    center, so they're not mixed into `amplitudes`."""
     model: MultiBandLineModel
     centers: pd.Series
     deltas: pd.Series
     amplitudes: pd.DataFrame
+    extra_model_amplitudes: pd.DataFrame
     null_mad: pd.Series
     chi2_red: pd.Series
     band_solutions: dict = field(repr=False)
@@ -711,12 +750,13 @@ class MultiBandLineFitResults:
         theta_deltas = ({band_: float(self.deltas[band_]) for band_ in self.deltas.index}
                        if self.deltas is not None else {})
 
-        assigned = m._assignment.loc[
-            (m._assignment.band == band) & m._assignment.assigned, "line"].tolist()
         solved = self.band_solutions[band]
         coeffs = solved["coeffs"]
+        line_names = solved["line_names"]
+        n_lines, n_extra = len(line_names), len(solved["extra_names"])
+
         total = np.zeros_like(w)
-        for i, name in enumerate(assigned):
+        for i, name in enumerate(line_names):
             if only_lines is not None and name not in only_lines:
                 continue
             c = m._effective_center(name, theta_centers, theta_deltas, band)
@@ -725,11 +765,19 @@ class MultiBandLineFitResults:
             profile = (_normalized_profile(c, **shape_kwargs) if m.normalize_profiles
                       else hflatline(c, **shape_kwargs))
             total = total + coeffs[i] * profile(w)
+
+        if only_lines is None:
+            # extra_models (e.g. a fixed-shape PAH complex) are part of
+            # the band's full model, but excluded when isolating one
+            # line's own contribution via `only_lines`.
+            for j, (_, fn) in enumerate(spec.extra_models):
+                total = total + coeffs[n_lines + j] * np.asarray(fn(w), dtype=float)
+
         if include_baseline:
             span = (spec.wavelength.min(), spec.wavelength.max())
             baseline = _baseline_vander(w, span, spec.baseline_degree)
             for d in range(spec.baseline_degree + 1):
-                total = total + coeffs[len(assigned) + d] * baseline[:, d]
+                total = total + coeffs[n_lines + n_extra + d] * baseline[:, d]
         return total
 
     def to_frame(self):
