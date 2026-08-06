@@ -118,10 +118,19 @@ Data flows through five stages; each has one module and the public API
    least squares (amplitude included as a free parameter, not read off
    the raw peak — see its docstring for why) — useful for getting a
    compact analytic stand-in for a tabulated instrumental response. Its
-   docstring also covers a real parameter degeneracy worth knowing before
-   trusting individual fitted values: with asymmetric edges, only the edge
-   *positions* (`mu_center_left ∓ dmu_{left,right}`) are tightly
-   identified, not `mu_center_left`/`dmu_left`/`dmu_right` individually.
+   docstring also covers a real parameter degeneracy: with
+   `mu_center_left` left free and asymmetric edges, it trades off against
+   `dmu_left`/`dmu_right` (measured `corr(dmu_left, a_left) = +1.000`
+   within a 4-pixel window on the real bandpass) — pass `mu_center=`
+   whenever it's already known (e.g. from `Tabular_Bandpass_Lite`) to
+   remove the degeneracy at *no* fit-quality cost (measured identical to 4
+   sig figs, fixed vs. free); prefer that over `symmetric=True`, which
+   also removes the degeneracy but at a real accuracy cost.
+   `fit_hflatline_at_iy` is the row-indexed variant used for bulk sweeps
+   (e.g. `examples/derive_bandpass_shape_coeffs.py`): it fetches the curve
+   and the analytic center from the same integer detector row directly,
+   avoiding a wavelength→row inversion that can land one row off near
+   template-quantization boundaries.
 
 `zodi_correction.py` and `tabular_bandpass_lite.py` are inputs consumed by
 stage 3 (zodiacal-light subtraction and detector-pixel → wavelength lookup,
