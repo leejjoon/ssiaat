@@ -35,6 +35,35 @@ Known caveats (read before trusting band 5/6 numbers):
   table and the dedicated zoom plots) as the diagnostic that would
   reveal this mismatch, rather than silently trusting their amplitudes.
 
+Line list, extended from the original core H/He set: the first pass's
+residuals showed two strong features not covered by the core list,
+confirmed against the real data before adding them here (see this
+session's analysis) --
+- A complex at ~0.90-0.97um in band 1 (up to +17 sigma residual):
+  matched to the [S III] 0.9069/0.9531um forbidden-line doublet, common
+  and often bright in PNe. [S III] 0.9531 alone explains the dominant
+  0.94-0.96um cluster (its expected FWHM at that wavelength, ~0.027um,
+  spans almost exactly that range); [S III] 0.9069, shifted blueward by
+  band 1's own ~0.003um offset, lines up with a distinct secondary bump
+  measured at 0.9042um (S/N~5.8 in the pre-extension fit).
+- The well-known PAH 3.29um complex in band 4 (up to +15 sigma). Unlike
+  every other entry here, PAH is NOT modeled as a `LineSpec` -- its
+  intrinsic width is comparable to or wider than band 4's instrumental
+  resolution, so it is not "an unresolved line broadened by the
+  instrument's bandpass" the way `LineSpec`'s profile assumes. It's
+  attached instead as `BandSpectrum.extra_models`: `sed.py`'s existing
+  `get_pah()` shapes (narrow aromatic + broad aliphatic, already tuned
+  against real spectra), fixed in shape/position, with only their
+  amplitude free. Reported separately in
+  `MultiBandLineFitResults.extra_model_amplitudes`, not mixed into the
+  tied-line `amplitudes` table -- it has no tied center to report
+  against.
+
+Known remaining unmodeled residual structure (out of scope for this
+pass, not silently claimed as covered): band 4 bumps near 2.85-2.95um
+and ~3.75um; band 3 near 2.15-2.18um; band 6 near 4.47um. Left as
+candidates for a future extension.
+
 Usage
 -----
     .venv/bin/python examples/fit_pn_lines.py
@@ -47,11 +76,15 @@ import numpy as np
 from astropy.table import Table
 
 from ssiaat.model.multiband_lines import BandSpectrum, LineSpec, MultiBandLineModel
+from ssiaat.model.sed import get_pah
 
 PN_METHOD = "A_pool"  # pooled-GP stack; higher line contrast than "B_combine"
 
-# Core H/He recombination line list: the cleanest, least blend-prone
-# candidates in SPHEREx's 0.75-5um range. Rest wavelengths, microns.
+# Core H/He recombination line list, plus the [S III] doublet (see the
+# module docstring for why they were added). Rest wavelengths, microns.
+# [S III] prior_offset is band 1's own measured ~-0.003um shift (from the
+# pre-extension fit's centers_mode="wavelength_solution" run) -- just an
+# initial guess; the tied fit refines it like every other line here.
 LINE_LIST = [
     LineSpec("He I 1.083", 1.08303),
     LineSpec("Pa-gamma", 1.09411),
@@ -63,6 +96,8 @@ LINE_LIST = [
     LineSpec("Br-beta", 2.62587),
     LineSpec("Br-alpha", 4.05116),
     LineSpec("Pf-beta", 4.65378),
+    LineSpec("[S III] 0.9069", 0.90686, prior_offset=-0.0025),
+    LineSpec("[S III] 0.9531", 0.95306, prior_offset=-0.0025),
 ]
 
 # Bands whose real profile is known to be flatter-topped than
@@ -90,6 +125,29 @@ def load_pn_spectra(path, method=PN_METHOD, baseline_degree=3):
     return spectra
 
 
+def _pah_extra_models():
+    """The PAH 3.29um complex as FIXED extra shape components (see the
+    module docstring for why this isn't a LineSpec): sed.py's `get_pah`
+    already has these tuned (narrow aromatic + broad aliphatic
+    component) against real spectra."""
+    narrow, broad = get_pah()
+    return (("PAH_narrow_3.29", narrow), ("PAH_broad_3.42", broad))
+
+
+def attach_extra_models(spectra, extra_models_by_band):
+    """Return new BandSpectrum objects (the dataclass is frozen) with
+    `extra_models` attached for the given bands; bands not in
+    `extra_models_by_band` pass through unchanged."""
+    out = []
+    for spec in spectra:
+        extra = extra_models_by_band.get(spec.band)
+        if extra:
+            spec = BandSpectrum(spec.band, spec.wavelength, spec.value, spec.error,
+                                baseline_degree=spec.baseline_degree, extra_models=extra)
+        out.append(spec)
+    return out
+
+
 def print_line_table(result, label):
     table = result.line_table()
     print(f"\n=== {label}: per-line summary ===")
@@ -102,6 +160,11 @@ def print_line_table(result, label):
                              "err_cal", "snr_cal", "coverage", "shape_extrapolated",
                              "at_bound", "blended", "resid_rms_inner", "resid_rms_outer"]]
     print(amp.to_string(index=False, float_format=lambda x: f"{x:.5f}"))
+
+    if len(result.extra_model_amplitudes):
+        print(f"\n=== {label}: fixed extra-shape components (e.g. PAH; no tied center) ===")
+        print(result.extra_model_amplitudes.to_string(index=False,
+                                                       float_format=lambda x: f"{x:.5f}"))
 
     print(f"\n=== {label}: per-band diagnostics ===")
     diag = result.null_mad.to_frame().join(result.chi2_red)
@@ -220,6 +283,7 @@ def main():
     args = ap.parse_args()
 
     spectra = load_pn_spectra(args.ecsv)
+    spectra = attach_extra_models(spectra, {4: _pah_extra_models()})
     print(f"loaded {sum(len(s.wavelength) for s in spectra)} points across"
          f" {len(spectra)} bands from {args.ecsv} (method={PN_METHOD!r})")
 
