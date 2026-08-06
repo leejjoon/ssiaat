@@ -138,6 +138,27 @@ respectively); `tabular_bandpass_lite.py` is a frozen from-coefficients
 re-implementation of the full `spherex_tabular_bandpass` package (not a
 dependency) supporting only `central_bandpass_only=True`.
 
+`bandpass_shape_lite.py`'s `BandpassShapeLite` does the analogous
+dependency-free trick for the *full bandpass curve*, not just the central
+wavelength: `sed.hflatline`'s shape (via `fit_hflatline`, `mu_center`
+fixed) plus a small additive `floor0 + floor1*(w - mu_center)` term —
+needed because the real tabulated bandpass carries a genuine ~0.01–0.1%-
+of-peak broadband transmission floor across the whole band that a
+single-peak shape can't otherwise represent — each fit as a low-order
+Chebyshev polynomial of wavelength, one set of coefficients per band,
+central column only. Wavelength-first API (`model(center, array=band)`),
+unlike `Tabular_Bandpass_Lite`'s pixel-first one, since with `mu_center`
+fixed the shape parameters are polynomials in wavelength directly — no
+`interp1d` inversion needed. Outside each band's validated domain
+(`SHAPE_CHEB_DOMAIN`) it extrapolates and emits a `UserWarning` rather
+than raising. Provenance (derivation script, date, trim rule, per-band
+degree and error budget) is recorded in the module docstring; regenerate
+via `examples/derive_bandpass_shape_coeffs.py`, which also documents the
+floor-term finding and a noise-floor-aware validation gate (the real
+tabulated data has its own row-to-row centroid noise — see
+`measure_centroid_noise_floor` — that a smooth model can't beat and
+shouldn't be held to).
+
 ## Cross-cutting conventions
 
 - **Two packed pixel-index schemes coexist** (`indexing.py` has the full
