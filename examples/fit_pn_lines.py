@@ -129,8 +129,54 @@ Known remaining unmodeled residual structure (out of scope for this
 pass, not silently claimed as covered): band 4 bumps near 2.78-2.85um
 and at the PAH complex's own blue edge (~3.256-3.262um -- plausibly
 Pfund-delta 3.29700um, the literature-confirmed line flagged above as
-sitting inside the PAH window and not modeled here); band 6 near
-4.47um. Left as candidates for a future extension.
+sitting inside the PAH window and not modeled here).
+
+Band 6 correction (important -- read before trusting any earlier
+`null_mad`/significance number for this band): band 6 had only ONE
+fitted line (Pf-beta), so `MultiBandLineModel`'s null-noise calibration
+-- which masks the vicinity of every FITTED line before estimating the
+band's true noise level -- had nothing else to mask, and ended up
+measuring the amplitude of three additional real, unmodeled residual
+bumps (at ~4.47, ~4.61, ~4.76um) as if they were noise. That inflated
+band 6's null_mad to 4.65 (worst of any band), which in turn made those
+same bumps (and Pf-beta itself) look far less significant than they
+really are -- a self-contamination effect verified directly: manually
+masking those three positions before recomputing null_mad drops it to
+~1.8, at which point two of the three bumps become clear multi-sigma
+detections instead of "noise". See
+`MultiBandLineModel._compute_null_mad`'s docstring for the general
+caveat (an automatic robust-statistics fix was tried and doesn't work
+at this contamination fraction; the real fix is exactly what's done
+below -- identify and fit the missing lines so the existing masking
+logic can do its job).
+- ~4.7635um: matches He II 8->7 (computed via the same Z=2 hydrogenic
+  Rydberg-Ritz formula used for the H I list in
+  `examples/pn_line_list_literature.md`) to 0.010um -- well within 1
+  FWHM. He II is physically expected in a stack containing PNe with
+  very hot central stars (see the coronal-line discussion in that
+  file); a low-n member like 8->7 is far brighter than the only
+  previously-found He II reference in the literature (a JWST paper's
+  28->13 transition, essentially a continuum-level cascade line, not
+  comparably bright). Added as a `LineSpec` -- comes out a clean
+  ~6.3 sigma detection.
+- ~4.4728um (the strongest of the three): no H I or He II hydrogenic
+  transition lands within several FWHM (checked the same way). Added
+  as a tentative, UNIDENTIFIED `LineSpec` (`Unid. 4.47um band6`) --
+  comes out a robust ~15 sigma detection once band 6's null_mad is no
+  longer self-contaminated, but its actual physical ID is an open
+  question for a follow-up literature pass, not claimed here.
+- ~4.6063um: tried as a fourth `LineSpec` and DROPPED. Its free center
+  wandered to the very edge of its neighbor-distance-capped bounds
+  (see `MultiBandLineModel.fit`'s neighbor-cap logic) right up against
+  Pf-beta's own wing, and fitting it there cut Pf-beta's own amplitude
+  roughly in half (2.21 -> 0.44 rel units) -- i.e. it isn't an
+  independent feature, it's this band's own already-documented
+  flat-top-vs-model mismatch (see `FLAT_TOP_CAVEAT_BANDS` above)
+  showing up as excess wing residual next to Pf-beta, not a second
+  line. Forcing a `LineSpec` there does real harm (destabilizing a
+  previously solid detection) for no real gain, so it's left out;
+  Pf-beta's own `resid_rms_inner`/`resid_rms_outer` numbers are the
+  right place to track this, not a separate fitted line.
 
 Usage
 -----
@@ -185,6 +231,15 @@ LINE_LIST = [
     LineSpec("[Fe II] 1.644", 1.644),
     LineSpec("Pf-gamma", 3.74057),
     LineSpec("Pf-epsilon", 3.03921),
+    # Band-6 residual-driven additions (see module docstring's "Band 6
+    # correction" section): band 6 had only Pf-beta fitted, so its
+    # null-noise calibration was self-contaminated by these same real
+    # bumps until they were identified/added here.
+    LineSpec("He II 8-7", 4.7635),  # Z=2 hydrogenic Rydberg calc, Delta=0.010um
+    LineSpec("Unid. 4.47um band6", 4.4728),  # no H I/He II match found; tentative
+    # A third candidate at ~4.61um was tried and DROPPED -- see module
+    # docstring's "Band 6 correction" section: it isn't an independent
+    # feature, it's degenerate with (and destabilizes) Pf-beta itself.
 ]
 
 # Bands whose real profile is known to be flatter-topped than

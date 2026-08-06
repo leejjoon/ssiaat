@@ -675,7 +675,31 @@ class MultiBandLineModel:
         MAD of the resulting formal-S/N distribution (scaled to a
         Gaussian-equivalent sigma). This measures the ACTUAL noise
         properties of the (correlated, GP-stacked) data, which the
-        formal `1/error**2`-weighted covariance does not capture."""
+        formal `1/error**2`-weighted covariance does not capture.
+
+        CAVEAT (found on the real PN spectrum, band 6 specifically, not
+        hypothetical): "the vicinity of every fitted line" only masks
+        lines that are IN the model -- a real, unmodeled feature sits
+        unmasked in this scan and inflates the very calibration factor
+        meant to judge whether it, and everything else in that band, is
+        significant. With only one fitted line (Pf-beta), band 6's
+        naive null_mad (4.65, worst of any band) turned out to be
+        dominated by three additional real residual bumps, not genuine
+        noise: manually masking those too dropped it to ~1.8, at which
+        point two of the three bumps became clear multi-sigma
+        detections. An automatic robust-statistics fix (iterative
+        sigma-clipping) was tried and DOESN'T work here -- at ~40% of
+        the probe grid affected, the contamination is too close to a
+        typical robust estimator's ~50% breakdown point for a single
+        pass to self-correct. The real fix is the one already built
+        into this class: identify the missing line(s), add them to the
+        model, and refit -- once genuinely assigned, the existing mask
+        above excludes them from this scan correctly, no special-casing
+        needed. This is a standing risk for any band with few
+        already-known lines relative to how many real features it
+        actually has -- treat that band's null_mad/significance as
+        provisional until residual structure there has been checked
+        for missed lines, not trusted at face value."""
         out = {}
         for band, solved in band_solutions.items():
             spec = self.spectra[band]
