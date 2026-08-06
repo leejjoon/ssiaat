@@ -163,8 +163,20 @@ logic can do its job).
   transition lands within several FWHM (checked the same way). Added
   as a tentative, UNIDENTIFIED `LineSpec` (`Unid. 4.47um band6`) --
   comes out a robust ~15 sigma detection once band 6's null_mad is no
-  longer self-contaminated, but its actual physical ID is an open
-  question for a follow-up literature pass, not claimed here.
+  longer self-contaminated. A follow-up literature pass (see
+  `examples/pn_line_list_literature.md` section 9) checked every
+  coronal/forbidden line NIST ASD tabulates near 4.4-4.5um plus H2 and
+  a species-blind scan of the whole window: **no confirmed
+  identification was found**. [Mg IV] 4.487-4.488um (NIST ASD;
+  independently detected in real PNe by Smith et al. 2020 and the
+  AKARI/IRC atlas, Ohsawa et al. 2016) is the closest known candidate
+  by a wide margin, but sits 0.012-0.015um (~35-44% of this band's
+  0.034um FWHM) redward -- a real offset, larger than the H I/He II
+  Rydberg-Ritz cross-checks matched elsewhere in this same analysis.
+  Flagged as the closest candidate, not asserted as an identification;
+  the ID (and, per that file's suggestion, whether SPHEREx's own band-6
+  wavelength solution is accurate enough at 4.47-4.49um to trust a
+  match this tight) remains an open question.
 - ~4.6063um: tried as a fourth `LineSpec` and DROPPED. Its free center
   wandered to the very edge of its neighbor-distance-capped bounds
   (see `MultiBandLineModel.fit`'s neighbor-cap logic) right up against

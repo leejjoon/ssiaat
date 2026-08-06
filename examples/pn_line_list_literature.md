@@ -419,3 +419,219 @@ extracted by WebFetch's summarizer on first attempts — see the digit-
 transposition note in the intro; worked around via the Rydberg-formula
 calculation plus independent cross-checks instead of trusting that
 extraction).
+
+---
+
+## 9. Targeted search: unidentified band-6 feature near 4.47 μm
+
+Research note extending this file to a specific open question from
+`examples/fit_pn_lines.py`: the 308-PN SPHEREx stack shows a real,
+~15σ, narrow (instrumental FWHM ≈0.034 μm) emission feature at
+**≈4.4728–4.475 μm (vacuum)**, tracked there as `LineSpec "Unid. 4.47um
+band6"`. H I (full Humphreys series via Rydberg–Ritz) and He II (Z=2
+hydrogenic Rydberg–Ritz series) were already computed and ruled out
+earlier in this same session — nearest members Hu-ζ (4.3765 μm) / Hu-ε
+(4.6725 μm) for H I and He II 8→7 (4.7635 μm, matching a *separate*
+already-identified ~4.76 μm bump) — both >0.09 μm (>2.5 FWHM) away; not
+re-derived here, only cross-checked against NIST ASD where noted below.
+
+### 9.1 Coronal/high-ionization candidates, checked directly against NIST ASD
+
+Each ion below was queried directly against the NIST ASD Lines Query
+(https://physics.nist.gov/cgi-bin/ASD/lines1.pl, live query in this
+session, vacuum wavelengths, 4–5 μm window unless noted) rather than
+taken from a secondary summary.
+
+| Ion | NIST ASD λ (vac, μm) | Transition | Offset from 4.4728–4.475 μm | Verdict |
+|---|---|---|---|---|
+| **[Mg IV]** | **4.488** (ground term ²P₃/₂–²P₁/₂, M1; also a much weaker E2 at the same λ) | forbidden, ground-term fine-structure | **+0.013 to +0.015 μm (≈0.4×FWHM), redward** | **Closest real candidate found — but not a precise match** (see §9.5) |
+| [Ar VI] | 4.5292 (²P₁/₂–²P₃/₂, M1) | forbidden | +0.054 to +0.056 μm (>1.5×FWHM) | **Checked and ruled out** |
+| [Mg V] | no line in 4–5 μm matches; nearest catalogued lines are 4.0005 (E2, very weak), 4.134, 4.264 μm. The real diagnostic ground-term line (³P₂–³P₁, M1) is at **5.608 μm** (per Casassus et al. 2000, §9.5), far outside this window | forbidden (ground-term line outside 4–5 μm) | ≥0.21 μm (≥6×FWHM) for anything in-window | **Checked and ruled out** |
+| [Ca V] | 4.1585 (M1, plus a much weaker E2 at the same λ) | forbidden | −0.31 to −0.32 μm (≥9×FWHM) | **Checked and ruled out** |
+| [Na III] | **no lines returned by NIST ASD anywhere in 4–5 μm** ("No lines are available in ASD with the parameters selected") | — | n/a | **Not tabulated in this window — not a candidate** |
+| [Al V] | **no lines returned by NIST ASD anywhere in 4–5 μm.** Its real ground-term M1 line is at 2.883 μm (Casassus et al. 2000, matches NIST-style value in their Table A1) | forbidden (ground-term line far outside window) | n/a | **Not tabulated in this window — not a candidate** |
+| [Si IX] | **no lines returned by NIST ASD anywhere in 4–5 μm.** Its one known IR line is 3.934 μm (already documented in §4 of this file, confirmed via Casassus et al. 2000 + Dinerstein review) | forbidden (known line far outside window) | n/a | **Not tabulated in this window — not a candidate** |
+
+### 9.2 Comprehensive all-species NIST ASD scan of 4.45–4.50 μm
+
+To catch anything not on the task's candidate list, NIST ASD was queried
+with **no species restriction** ("Spectra" field left blank) across the
+full 4.45–4.50 μm window — this returns every line from every element/ion
+NIST ASD has catalogued in that range, not just the coronal ions above.
+The query returned 37 lines total; the ones close enough to be worth
+listing (full offset from the 4.4728–4.475 μm centroid) are:
+
+| Species | λ (vac, μm) | Type | Offset | Assessment |
+|---|---|---|---|---|
+| Si I | 4.47318 | allowed (E1), Aki=8.58×10³ s⁻¹ | **inside** the quoted 4.4728–4.475 μm range | Wavelength match is essentially exact, but this is a *permitted* transition of *neutral* silicon — no known nebular-emission mechanism and no PN detection found in any source read in this session. **Precise wavelength match; astrophysically implausible / unconfirmed carrier** |
+| Xe I | 4.47324 (×2, blended) | not classified in ASD output | **inside** the quoted range | Same verdict as Si I: neutral noble-gas atomic line, no plausible PN nebular-emission mechanism, no literature PN detection found. **Precise wavelength match; astrophysically implausible / unconfirmed carrier** |
+| Fe II | 4.4790036 | not classified/tabulated (no Aki in ASD) | +0.004 to +0.006 μm (<0.2×FWHM) | Real ion, but NIST ASD does not classify this particular transition's strength, and no PN paper reporting emission at 4.479 μm was found. **Could not verify — inconclusive, not a confirmed candidate** |
+| Fe XIV | 4.49 (E2/M1, both listed) | forbidden | +0.015 to +0.017 μm | Requires stripping to Fe¹³⁺ (ionization energies far beyond even the "record-setting" [Si IX] IP=303 eV noted in Casassus et al. 2000 as the highest confirmed PN coronal ionization state). **Checked and ruled out on physical grounds** despite the wavelength being close |
+| Mg IX | 4.464 (allowed) | permitted | −0.009 to −0.012 μm | Requires ~265 eV to produce from Mg VIII; no PN central star is known to be hot enough. **Checked and ruled out on physical grounds** |
+| Ac I, Th I, Th II, Na II, C I, O IV, Li I, S I, S II, Cd II | 4.46–4.50 (various) | mostly allowed/lab lines | 0.005–0.04 μm | Actinium/thorium entries are laboratory calibration lines with no astrophysical relevance; Na II/C I/O IV/Li I/S I/S II/Cd II are all either far enough off (≥0.005–0.04 μm, i.e. comparable to or larger than the Mg IV offset) or have no reported PN mid-IR detection. **Checked and ruled out / not credible candidates** |
+
+None of these is a forbidden ground-term "coronal-type" line the way
+[Mg IV]/[Ar VI]/[Mg V]/[Ca V]/[Si IX] are, and none has been reported as a
+detected PN emission feature in any primary source read in this session.
+
+### 9.3 H₂ and other molecular/dust features near 4.47 μm
+
+H₂ pure-rotational (0–0) S-branch wavelengths, from the MPE/ISO H₂ line
+list (https://www.mpe.mpg.de/ir/ISO/linelists/H₂.html — an ISO-heritage
+compilation, read directly in this session): **S(9) = 4.69466 μm**,
+**S(10) = 4.40997 μm** — the two S-branch members bracketing 4.47 μm, and
+both **>0.06 μm (>1.7×FWHM) away**; ruled out, consistent with §5's
+finding that the well-established, commonly-detected PN H₂ lines
+(1–0 S(1) 2.1218 μm, 2–1 S(1) 2.2477 μm) are nowhere near this window.
+Higher-v vibration–rotation H₂ lines that happen to fall closer in
+wavelength — e.g. 7–6 Q(13) 4.42179 μm, 9–8 Q(3) 4.43663 μm, 2–1 O(8)
+4.43739 μm, all from the same MPE list — are still ≥0.03 μm (≥0.9×FWHM)
+off *and* require v′=7–9 vibrational excitation that is not expected in
+an ordinary (non-shocked) PN, let alone consistently across a stack of
+308 objects; **checked and ruled out**.
+
+No PN-specific detection of the CO fundamental (Δv=1, ~4.3–5.1 μm) band or
+the CO₂ ice 4.27 μm stretching mode was found in this targeted search
+either, consistent with §5's conclusion for the whole 0.75–5.0 μm window:
+**no PN-specific molecular/ice feature inside 0.75–5.0 μm was confirmed
+anywhere in this file's research, including specifically at 4.47 μm.**
+
+### 9.4 Survey/atlas corroboration: does any dedicated PN mid-IR paper flag anything at 4.47 μm?
+
+- **Ohsawa, Onaka, Sakon, Matsuura & Kaneda (2016), AJ 151, 93
+  (arXiv:1604.00884)** — the AKARI/IRC 2.5–5.0 μm, R≈100 atlas of 72
+  Galactic PNe already listed in §6 as "abstract only" — was **read in
+  full in this session** (their Tables 1–6, Figures 4–7). Their spectral
+  resolution (FWHM of the spectral PSF ≈0.035–0.06 μm) is directly
+  comparable to SPHEREx's 0.034 μm FWHM at this wavelength, making this
+  the single most relevant comparison survey for this question. Their
+  fixed fitting line list (Table 3) includes exactly two fine-structure
+  features in this region: **[Mg IV] at 4.487 μm** and **[Ar VI] at
+  4.530 μm** — both independently detected across multiple individual
+  objects in their sample (Table 5 lists per-object [Mg IV] fluxes for
+  PNe 002.0−13.4, 038.2+12.0, and others). **No additional or
+  unidentified feature near 4.47 μm is mentioned anywhere in their text,
+  tables, or example spectra** (Fig. 4's PNG 074.5+02.1 panel shows only
+  [Mg IV]/[Ar VI] labeled between 4.3 and 4.8 μm). This is a real,
+  useful negative result: the one published PN survey with matching
+  resolution and comparable spectral coverage does not flag a distinct
+  line at 4.47 μm.
+- **Smith, Logsdon, McLean et al. (2020), ApJ (arXiv:2008.13635)**,
+  "A Survey of 3 to 5.4 μm Emission From Planetary Nebulae using
+  SOFIA/FLITECAM" (already cited in §5 for its PAH work) — **read in full
+  in this session**. Confirms [Mg IV] independently: "IC 5117 showed
+  [Mg IV] emission" with flux 4.1±0.18×10⁻¹⁵ W/m² (their Table 3),
+  labeled at ≈4.49 μm in their Figure 2 — consistent with the NIST/AKARI
+  value to the precision quoted. No feature at 4.47 μm specifically is
+  reported for any of their three targets (BD+30°3639, IC 5117,
+  PNG 093.9−00.1); their 4.2–4.4 μm range was in any case unobservable
+  ("opaque even at SOFIA altitudes"), so this paper cannot rule anything
+  in or out for the low-wavelength edge of the target window, only for
+  4.4–4.475–ish upward.
+- **Casassus, Roche & Barlow (2000), MNRAS 314, 657** (already cited in
+  §4/§8 for [Si VI]/[Si IX]) — **re-read in full in this session**,
+  including their Appendix A wavelength table. Covers [Mg VIII] 3.028,
+  [Mg VII] 5.502, [Al V] 2.883/[Al VI] 3.659, [Si VI] 1.963/[Si VII]
+  2.48/[Si IX] 3.934, [Ar V] 7.91+13.1/[Ar VI] 4.528, [Na VI] 8.64/
+  [Na VII] 4.69, [K VII] 3.19 — **no line anywhere near 4.47 μm** other
+  than [Ar VI] (already ruled out above, §9.1).
+- **Bernard-Salas, Pottasch, Beintema & Wesselius (2001), A&A 367, 949**
+  — the dedicated ISO-SWS NGC 7027 line-list paper (2.38–45.2 μm, so it
+  does nominally cover 4.47 μm) — **could not be read in full in this
+  session**: the A&A PDF returned HTTP 403, and the line-list tables
+  (Tables 1/3/4, containing the actual per-wavelength identifications)
+  are noted in the paper itself as CDS/electronic-only and were not
+  retrieved. This is the same limitation already flagged for this paper
+  in §6 ("search-summary only"); **explicitly flagged here as "could not
+  verify"** rather than assumed to contain or not contain a 4.47 μm
+  entry.
+- **Zhang, Liu, Luo, Péquignot & Barlow (2005), arXiv:astro-ph/0507155**,
+  "Integrated spectrum of the planetary nebula NGC 7027" — read in full;
+  their deep line list is **optical-only (3310–9160 Å)** and does not
+  cover 4.47 μm at all. Consulted, not applicable.
+- No dedicated JWST NIRSpec (0.6–5.3 μm) PN spectroscopic atlas covering
+  4.47 μm was found in this targeted search either, consistent with §6's
+  standing conclusion that current JWST PN papers are MIRI-dominated and
+  start at ≥4.9 μm.
+
+### 9.5 Bottom line
+
+**No confirmed identification was found for the ≈4.4728–4.475 μm
+feature.** [Mg IV] at 4.487–4.488 μm (NIST ASD; independently confirmed
+as a real, detected PN line in both a single-object near-IR survey
+— Smith et al. 2020, IC 5117 — and a 72-object atlas — Ohsawa et al.
+2016) is by a wide margin the closest known forbidden/coronal line to
+this wavelength, and it is astrophysically plausible for a 308-PN stack
+(its 80 eV ionization requirement is comparable to [Ar VI]'s 75 eV,
+both attainable in a modest fraction of moderately hot PN central
+stars). But its wavelength sits **0.012–0.015 μm (≈35–44% of the
+0.034 μm instrumental FWHM) redward** of the quoted centroid — a real,
+non-negligible offset, larger than the wavelength-calibration accuracy
+implied by how tightly the H I/He II Rydberg-Ritz cross-checks matched
+earlier in this same investigation. This should be treated as **the
+closest known candidate, not a confirmed match** — worth a follow-up
+check of SPHEREx's own band-6 wavelength-solution accuracy specifically
+at 4.47–4.49 μm before going further, but not asserted here as an
+identification.
+
+Every other coronal ion named in the task is either definitively ruled
+out by direct NIST ASD wavelengths ([Ar VI] 4.529 μm, [Mg V]'s real line
+at 5.608 μm, [Ca V] 4.1585 μm — all ≥1.5 FWHM away) or has **no line
+tabulated in NIST ASD anywhere in the 4–5 μm window at all** ([Na III],
+[Al V], [Si IX]). A comprehensive, species-blind NIST ASD scan of the
+entire 4.45–4.50 μm window surfaces exactly two lines whose wavelength
+sits *inside* the observed centroid range (Si I 4.47318 μm, Xe I
+4.47324 μm) — but both are permitted transitions of neutral, easily
+photoionized atoms, with no known nebular-emission mechanism and no PN
+literature detection found; not credible candidates on the evidence
+available. No H₂ line (nearest: 0–0 S(10) at 4.40997 μm, >1.7 FWHM away),
+no other molecular transition, and no PN-specific ice/CO/CO₂ feature
+lands within even one FWHM of the observed wavelength. The one published
+near-IR PN survey with genuinely comparable spectral resolution (AKARI/
+IRC, 72 PNe) reports no feature at all near 4.47 μm beyond [Mg IV]/
+[Ar VI]. **This is a clean "not found" result** for a precise
+identification; [Mg IV] is flagged only as the nearest known candidate
+for whoever investigates this further, not as a resolved answer.
+
+### References added for §9
+
+- NIST Atomic Spectra Database (ASD), Lines Query, direct queries for
+  Mg IV, Mg V, Ca V, Na III, Al V, Si IX, Ar VI, Fe II, Si I, and an
+  all-species scan of 4.45–4.50 μm, all run in this session:
+  https://physics.nist.gov/cgi-bin/ASD/lines1.pl (citing, per NIST's own
+  attribution for these entries, Martin & Zalubas 1980 and Kaufman &
+  Martin 1991 for Mg-ion energy levels/classifications, and Saloman 2010
+  for Ar VI)
+- Ohsawa, R., Onaka, T., Sakon, I., Matsuura, M., & Kaneda, H. 2016, AJ,
+  151, 93, "AKARI/IRC Near-Infrared Spectral Atlas of Galactic Planetary
+  Nebulae" (arXiv:1604.00884) — already listed in the main References
+  list above as abstract-only; **upgraded here to read-in-full** for
+  this section's purposes
+- Smith, E. C., Logsdon, S. E., McLean, I. S., Fletcher, E., Vacca,
+  W. D., Becklin, E. E., Shenoy, S., Savage, M., & Hamilton, R. T. 2020,
+  ApJ, "A Survey of 3 to 5.4 μm Emission From Planetary Nebulae using
+  SOFIA/FLITECAM" (arXiv:2008.13635)
+- Pereira-Santaella, M., et al. 2024, A&A, 685, L13, "Extended
+  high-ionization [Mg IV] emission tracing widespread shocks in
+  starbursts seen by JWST/NIRSpec" (arXiv:2404.16641) — extragalactic,
+  cited only as independent cross-confirmation of the [Mg IV] 4.487 μm
+  laboratory wavelength, not as PN evidence
+  https://www.aanda.org/articles/aa/full_html/2024/05/aa49982-24/aa49982-24.html
+- Zhang, Y., Liu, X.-W., Luo, S.-G., Péquignot, D., & Barlow, M. J. 2005,
+  A&A, 442, 249, "Integrated spectrum of the planetary nebula NGC 7027"
+  (arXiv:astro-ph/0507155) — consulted, optical-only, not applicable to
+  this section's wavelength range
+- MPE/ISO H₂ pure-rotational and vibration–rotation line list:
+  https://www.mpe.mpg.de/ir/ISO/linelists/H2.html
+- Kaufman, V., & Martin, W. C. 1991 (Mg-ion spectral classifications, as
+  cited by NIST ASD — not independently read in this session)
+- Martin, W. C., & Zalubas, R. 1980 (Mg-ion energy levels, as cited by
+  NIST ASD — not independently read in this session)
+- Saloman, E. B. 2010 (Ar-ion energy levels/wavelengths, as cited by
+  NIST ASD for Ar VI — not independently read in this session)
+
+**Sources consulted but not usable for §9** (dead-end for the record):
+A&A's own PDF host for Bernard-Salas et al. (2001) — HTTP 403, same as
+noted for the main body of this file; the paper's actual line-list
+tables are CDS/electronic-only per the paper's own text and were not
+retrieved by any route tried in this session.
