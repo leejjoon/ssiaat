@@ -23,6 +23,9 @@ venv.bak/
 /*.log
 .ipynb_checkpoints/
 
+# Build artifacts
+/build/
+
 # IDEs
 .idea/
 .vscode/
