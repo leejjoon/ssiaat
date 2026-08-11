@@ -1,5 +1,6 @@
 from .fitting import Model, FitResults
 from . import sed, shapes, lines
+from .shapes import gauss
 from .lines import (
     LINES,
     FEATURES,
@@ -9,6 +10,7 @@ from .lines import (
     get_line,
     get_line_model,
     feature_spec,
+    fit_hflatline_params,
 )
 from .multiband_lines import (
     BandSpectrum,
@@ -32,6 +34,8 @@ __all__ = [
     "get_line",
     "get_line_model",
     "feature_spec",
+    "fit_hflatline_params",
+    "gauss",
     "LineSpec",
     "BandSpectrum",
     "MultiBandLineModel",

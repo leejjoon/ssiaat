@@ -101,14 +101,32 @@ Data flows through five stages; each has one module and the public API
    working on a cropped image.
 5. **Model fitting** (`model/`) — `shapes.py` has the profile-shape
    primitives (smooth top-hat-like functions built from `tanh_step`:
-   `hflatline`, `cont_left/right`, `get_cont_model`, ...). `lines.py` is the
-   line-model *registry* — the single inventory of SPHEREx lines/features:
-   `LINES` (name → `LineModel`) and `FEATURES` (name → `Feature`, carrying its
-   continuum window), with one `bandpass_line()` factory over
-   `BandpassShapeLite` and `get_line()`/`get_line_model()`/`feature_spec()`
-   builders. Bandpass lines carry a `prior_offset` (the explicit replacement
-   for the old magic `d_shift`); legacy analytic shapes (`br_a`, PAH, H2O-ice,
-   ...) are registered `kind="shape"` reproducing the old getters verbatim.
+   `hflatline`, `cont_left/right`, `get_cont_model`, ...) plus a `gauss`
+   (center, sigma) for peaked resolved lines. `lines.py` is the line-model
+   *registry* — the single inventory of SPHEREx lines/features: `LINES` (name →
+   `LineModel`) and `FEATURES` (name → `Feature`, carrying its continuum
+   window), with one `bandpass_line()` factory over `BandpassShapeLite` and
+   `get_line()`/`get_line_model()`/`feature_spec()` builders. A `LineModel.kind`
+   is `"bandpass"` (built from `BandpassShapeLite` at `rest_wavelength +
+   prior_offset`, the explicit replacement for the old magic `d_shift`) or a
+   **manually-specified** profile — `"hflattop"`/`"hflatline"`/`"gauss"` built
+   from a `params` dict — for spectrally resolved features (PAH) or band-5/6
+   ranges where `BandpassShapeLite` is imprecise (`"callable"` is an escape
+   hatch). Adding a manual line is a one-row registry edit; for accurate band-5/6
+   `hflatline` params fit to the *real* tabulated bandpass use
+   `fit_hflatline_params(center, band)` (offline; needs the optional
+   `spherex_tabular_bandpass` package). The legacy analytic lines (`br_a`, PAH,
+   H2O-ice, ...) are manual `hflattop`/`hflatline` with their old hand-tuned
+   params reproduced verbatim. Every profile is normalized to **unit peak** by
+   default (`LineModel.norm`; per-call `get_line(name, norm="area"|"none")` —
+   `"area"` is unit-integral, using each shape's analytic integral: `gauss`
+   (`sigma*sqrt(2*pi)`), `hflattop` and symmetric `hflatline`
+   (`(mu1-mu0)/(1-e^{-8a})`), numeric fallback only for asymmetric `hflatline`).
+   `norm="none"` reproduces the raw legacy profiles bit-for-bit; the default
+   peak-norm leaves bandpass lines unchanged but rescales the manual-line
+   coefficient maps (a clean per-line rescale when well-conditioned; also
+   coupled into the continuum for near-collinear lines, since the fitter's
+   `pinv` has an rcond cutoff).
    `sed.py` is now a thin back-compat facade: it re-exports the shapes and
    keeps `get_br_a`/`get_pa_b`/`get_pah`/`get_h2o_ice` as *deprecated* shims
    delegating to the registry. `Model`

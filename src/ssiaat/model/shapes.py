@@ -86,6 +86,18 @@ class hflattop:
             self._left(mu) * self._right(mu)
         )
 
+    @property
+    def area(self):
+        r"""Analytic integral of the top-hat: ``(mu1-mu0)/(1 - e^{-8a})``.
+
+        The profile is a product of two facing sigmoids
+        ``S(k(dmu-u)) S(k(dmu+u))`` (``S(x)=(1+tanh x)/2``, ``k=2a/dmu``); the
+        substitution ``p = e^{2(k u - 2a)}`` reduces the integral to
+        ``(1/2) ln(m)/(m-1)`` with ``m = e^{-8a}``, giving ``2*dmu/(1-e^{-8a})``.
+        (Limits: ``a -> inf`` -> box width ``mu1-mu0``; ``a -> 0`` -> infinite.)
+        """
+        return 2.0 * self.dmu / (1.0 - np.exp(-8.0 * self.a))
+
 
 class hflatline:
     def __init__(self, mu_center_left, dmu_left, a_left, *, dmu_right=None, a_right=None):
@@ -110,6 +122,43 @@ class hflatline:
         return (
             self._left(mu) * self._right(mu)
         )
+
+    @property
+    def area(self):
+        r"""Analytic integral for the SYMMETRIC case (``a_left == a_right`` and
+        ``dmu_left == dmu_right``): ``2*dmu/(1 - e^{-8a})`` (same closed form as
+        :class:`hflattop`). The asymmetric case (different edge rates) has no
+        clean elementary closed form -- raises ``NotImplementedError`` so callers
+        fall back to numeric integration.
+        """
+        if self.dmu_left == self.dmu_right and self.a_left == self.a_right:
+            return 2.0 * self.dmu_left / (1.0 - np.exp(-8.0 * self.a_left))
+        raise NotImplementedError(
+            "hflatline.area has no clean closed form for asymmetric edges"
+            " (a_left != a_right or dmu_left != dmu_right); integrate numerically")
+
+
+class gauss:
+    """Gaussian line profile, unit peak at ``center``.
+
+    ``gauss(center, sigma)(mu) = exp(-0.5*((mu-center)/sigma)**2)`` -- peak 1 at
+    ``center``, so a fitted coefficient is the line's peak amplitude. Unlike the
+    tanh top-hats (which model an unresolved line broadened by the instrument
+    bandpass), this is for a spectrally *resolved* line whose own profile is
+    peaked. FWHM = ``2*sqrt(2*ln 2)*sigma`` ~= ``2.3548*sigma``.
+    """
+    def __init__(self, center, sigma):
+        self.center = center
+        self.sigma = sigma
+
+    def __call__(self, mu):
+        return np.exp(-0.5 * ((np.asarray(mu, dtype=float) - self.center)
+                              / self.sigma) ** 2)
+
+    @property
+    def area(self):
+        """Analytic integral of the unit-peak Gaussian: ``sigma*sqrt(2*pi)``."""
+        return self.sigma * np.sqrt(2.0 * np.pi)
 
 
 def get_conts(w0, w1, a=0.3):
