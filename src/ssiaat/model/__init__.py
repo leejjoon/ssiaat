@@ -1,4 +1,15 @@
 from .fitting import Model, FitResults
+from . import sed, shapes, lines
+from .lines import (
+    LINES,
+    FEATURES,
+    LineModel,
+    Feature,
+    bandpass_line,
+    get_line,
+    get_line_model,
+    feature_spec,
+)
 from .multiband_lines import (
     BandSpectrum,
     LineSpec,
@@ -10,6 +21,17 @@ from .multiband_lines import (
 __all__ = [
     "Model",
     "FitResults",
+    "sed",
+    "shapes",
+    "lines",
+    "LINES",
+    "FEATURES",
+    "LineModel",
+    "Feature",
+    "bandpass_line",
+    "get_line",
+    "get_line_model",
+    "feature_spec",
     "LineSpec",
     "BandSpectrum",
     "MultiBandLineModel",

@@ -11,7 +11,7 @@ from .spherex_table import (
     Model,
     FitResults,
 )
-from .model import sed
+from .model import sed, lines, shapes
 from .reproj import (
     SphxReprojector,
     get_df_from_uri,
@@ -33,6 +33,8 @@ __all__ = [
     "Model",
     "FitResults",
     "sed",
+    "lines",
+    "shapes",
     "SphxReprojector",
     "get_df_from_uri",
     "merge_to_stable",

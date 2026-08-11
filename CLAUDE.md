@@ -42,10 +42,11 @@ tryceratops, flake8-async, ...), which flag patterns this codebase uses on
 purpose (see "never abort a bulk run" below). Widen `select` deliberately,
 not by accident. A handful of pre-existing findings are left unfixed on
 purpose: `E402` (module-level imports placed mid-file at `# %%`
-notebook-style cell markers) and `F821`/`F841` inside `model/sed.py`'s
-already-dead `channel_model_deprecated`/`test()` demo code and one
-validating-but-unused `det_id` lookup in `reproj.py`'s `ingest_hdul` — check
-`ruff check src tests` output before assuming a fresh finding is new.
+notebook-style cell markers) and one validating-but-unused `det_id` lookup
+in `reproj.py`'s `ingest_hdul` (an `F841`) — check `ruff check src tests`
+output before assuming a fresh finding is new. (The old `F821`/`F841` in
+`model/sed.py`'s `channel_model_deprecated`/`test()` demo code are gone —
+that dead code was removed when `sed.py` became a facade, see stage 5.)
 
 ## Architecture: the pipeline, in order
 
@@ -98,8 +99,19 @@ Data flows through five stages; each has one module and the public API
    value per pixel, e.g. a fitted map). `Image` is an `np.ndarray` subclass
    that carries its converter through slicing/math so `.to_itable()` keeps
    working on a cropped image.
-5. **Model fitting** (`model/`) — `sed.py` has the line/continuum-shape
-   library (smooth top-hat-like functions built from `tanh_step`); `Model`
+5. **Model fitting** (`model/`) — `shapes.py` has the profile-shape
+   primitives (smooth top-hat-like functions built from `tanh_step`:
+   `hflatline`, `cont_left/right`, `get_cont_model`, ...). `lines.py` is the
+   line-model *registry* — the single inventory of SPHEREx lines/features:
+   `LINES` (name → `LineModel`) and `FEATURES` (name → `Feature`, carrying its
+   continuum window), with one `bandpass_line()` factory over
+   `BandpassShapeLite` and `get_line()`/`get_line_model()`/`feature_spec()`
+   builders. Bandpass lines carry a `prior_offset` (the explicit replacement
+   for the old magic `d_shift`); legacy analytic shapes (`br_a`, PAH, H2O-ice,
+   ...) are registered `kind="shape"` reproducing the old getters verbatim.
+   `sed.py` is now a thin back-compat facade: it re-exports the shapes and
+   keeps `get_br_a`/`get_pa_b`/`get_pah`/`get_h2o_ice` as *deprecated* shims
+   delegating to the registry. `Model`
    bundles named line + continuum callables, `least_square_fit` factorizes
    the stable's (duplicated) pixel index into per-pixel groups and calls
    `vectorized_lstsq.py`'s numpy-vectorized batched least squares (one

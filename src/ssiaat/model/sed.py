@@ -1,247 +1,61 @@
-import numpy as np
-#from spherex_utils.utils.mosaic_utils import SpectralChannelDefinition
-#scd = SpectralChannelDefinition()
+"""Backward-compatibility facade for the line/continuum model library.
+
+The profile-shape primitives now live in :mod:`ssiaat.model.shapes` and the line
+inventory in :mod:`ssiaat.model.lines`. This module re-exports the shapes
+unchanged and keeps the old hand-coded line getters (``get_br_a``, ``get_pa_b``,
+``get_pah``, ``get_h2o_ice``) as thin, **deprecated** wrappers over the registry
+so existing imports (``from ssiaat.model.sed import get_br_a``) keep working.
+
+Prefer, in new code::
+
+    from ssiaat.model.shapes import hflatline, get_cont_model   # shapes
+    from ssiaat.model.lines import get_line, get_line_model      # lines
+"""
+import warnings
+
+# Shape primitives + continuum helpers (re-exported; not deprecated).
+from .shapes import (  # noqa: F401
+    tanh_step,
+    const,
+    cont_left,
+    cont_right,
+    hflattop,
+    hflatline,
+    get_conts,
+    get_cont_model,
+)
 
 
-def tanh_step(a, x1, xx):
-    """ smooth transition from x=0 to x=x1.
-    Postive a for y~1 at x=0 y~0 at x=x1.
-    """
-    dx = x1
-    yy = (1 + np.tanh(a - xx*a*2/dx)) / 2 # + np.tanh(xx)# *np.tanh(18-x)
-    return yy
-
-
-class const:
-    def __init__(self):
-        """
-        step-like function. The transition begins neart 75% point until 125% point.
-        """
-        pass
-        # self.a = a
-
-    def __call__(self, mu):
-        # return tanh_step(self.a, 1, (mu-self.mu0)/self.dmu/2+0.5)
-        return np.ones_like(mu)
-
-class cont_left:
-    def __init__(self, mu0, mu1, a):
-        """
-        step-like function. The transition begins neart 75% point until 125% point.
-        """
-        mu0, mu1 = sorted([mu0, mu1])
-        dmu = (mu1 - mu0)/2.
-        self.mu0 = 0.5 * (mu0 + mu1)
-        self.dmu = dmu
-        self.a = a
-
-    def __call__(self, mu):
-        # return tanh_step(self.a, 1, (mu-self.mu0)/self.dmu/2+0.5)
-        return tanh_step(self.a, self.dmu, (mu-self.mu0) - 0.5*self.dmu)
-
-
-class cont_right:
-    def __init__(self, mu0, mu1, a):
-        """
-        step-like function. The transition begins neart -25% point until 25% point.
-
-        """
-        mu0, mu1 = sorted([mu0, mu1])
-        dmu = (mu1 - mu0)/2.
-        self.mu0 = 0.5 * (mu0 + mu1)
-        self.dmu = dmu
-        self.a = a
-
-    def __call__(self, mu):
-        # return tanh_step(self.a, 1, (mu-self.mu0)/self.dmu/2+0.5)
-        return tanh_step(-self.a, self.dmu, (mu-self.mu0 + 1.5*self.dmu))
-
-
-class hflattop:
-    # This is derecated. Use hflatline instead
-    def __init__(self, mu0, mu1, a):
-        # mu_mean = np.mean(mu0, mu1)
-        mu0, mu1 = sorted([mu0, mu1])
-        dmu = (mu1 - mu0)/2.
-        self.mu0 = 0.5 * (mu0 + mu1)
-        self.dmu = dmu
-
-        # mu_mean = np.mean(mu0, mu1)
-        self.a = a
-        self._left = cont_left(mu0, mu1, a)
-        self._right = cont_right(mu0, mu1, a)
-
-    def __call__(self, mu):
-        return (
-            self._left(mu) * self._right(mu)
-            # tanh_step(-self.a, (mu-self.mu0 + self.dmu)/self.dmu/2)
-            # tanh_step(-self.a, (mu-self.mu0 + self.dmu)/self.dmu/2)
-            # *
-            # tanh_step(self.a, (mu-self.mu0-self.dmu)/self.dmu/2+0.5)
-        )
-
-class hflatline:
-    def __init__(self, mu_center_left, dmu_left, a_left, *, dmu_right=None, a_right=None):
-        self.mu_center_left = mu_center_left # 0 = 0.5 * (mu0 + mu1)
-        self.mu_center_right = mu_center_left
-        self.dmu_left = dmu_left
-        self.dmu_right = dmu_left if dmu_right is None else dmu_right
-
-        self.a_left = a_left
-        self.a_right = a_left if a_right is None else a_right
-
-        # Note that cont_right/left is reversed. cont_right is left side of the
-        # liine, for example.
-        self._left = cont_right(self.mu_center_left - self.dmu_left,
-                                self.mu_center_left + self.dmu_left,
-                                self.a_left)
-        self._right = cont_left(self.mu_center_right - self.dmu_right,
-                                self.mu_center_right + self.dmu_right,
-                                self.a_right)
-
-    def __call__(self, mu):
-        return (
-            self._left(mu) * self._right(mu)
-        )
-
-
-def channel_model_deprecated(band: int | tuple[int, int], channel: int | tuple[int, int],
-                  model: str, a: float):
-
-    match band:
-        case int():
-            b1 = band
-            b2 = band
-        case (int(b1), int(b2)):
-            pass
-        case _:
-            raise ValueError()
-
-    match channel:
-        case int():
-            c1 = scd.wavelength_range(b1, channel)
-            c2 = scd.wavelength_range(b2, channel)
-        case (int(ch1), int(ch2)):
-            c1 = scd.wavelength_range(b1, ch1)
-            c2 = scd.wavelength_range(b2, ch2)
-        case _:
-            raise ValueError()
-
-    w1, w2 = c1.value[0], c2.value[1]
-
-    if model == "cont_left":
-        return cont_left(w1, w2, a)
-    elif model == "cont_right":
-        return cont_right(w1, w2, a)
-    elif model == "flattop":
-        return hflattop(w1, w2, a)
-    else:
-        raise KeyError("Unknown Model name:", model)
-
-
-# def cont_across_channel(band: int, channel_start: int, channel_end: int, model: str, a: float):
-#     c1  = scd.wavelength_range(band, channel_start)
-#     c2  = scd.wavelength_range(band, channel_end)
-#     w1, w2 = c1.value[0], c2.value[1]
-
-#     if model == "cont_left":
-#         return cont_left(w1, w2, a)
-#     elif model == "cont_right":
-#         return cont_right(w1, w2, a)
-#     elif model == "step":
-#         return hstep(w1, w2, a)
-#     else:
-#         raise KeyError("Unknown Model name:", model)
-
-
-def test():
-    a = 0.6
-
-
-    band = 4
-    model_defs = [((9, 12), "cont_left"),
-                  (10, "flattop"),
-                  (11, "flattop"),
-                  (12, "flattop"),
-                  (13, "flattop"),
-                  (14, "flattop"),
-                  ((13, 16), "cont_right"),
-                  ]
-
-    models = [channel_model(band, ch, model, a) for ch, model in model_defs]
-
-    mu0 = models[0].mu0 - 2*models[0].dmu
-    mu1 = models[-1].mu0 + 2*models[-1].dmu
-
-    mu = np.linspace(mu0, mu1, 128)
-
-    fig, axs = plt.subplots(2, 1, num=1, clear=True)
-    ax = axs[0]
-    for m in models:
-        ax.plot(mu, m(mu))
-
-        _mu0 = m.mu0 - m.dmu
-        _mu1 = m.mu0 + m.dmu
-        ax.axvline(_mu0, ls=":")
-        ax.axvline(_mu1, ls=":")
-
-
-    k = np.array([1, 2, 5, 25, 4, 2, 2])[:, np.newaxis]
-    k = np.array([1, 2, 5, 5.5, 4, 2, 2])[:, np.newaxis]
-    # k = np.array([1, 1, 1, 1])[:, np.newaxis]
-    mu_c = [m.mu0 for m in models]
-
-    ax = axs[1]
-    yy = np.array([k1*m(mu) for (k1, m) in zip(k, models)])
-
-    for y1 in yy:
-        ax.plot(mu, y1, ":")
-
-    ax.plot(mu, np.sum(yy, axis=0))
-    ax.plot(mu_c, k[:len(mu_c)], "o")
+def _deprecated(old, new):
+    warnings.warn(
+        f"ssiaat.model.sed.{old} is deprecated; use {new} instead.",
+        DeprecationWarning, stacklevel=3)
 
 
 def get_h2o_ice():
-    h2o_ice = hflatline(3.07, 0.23, 1.3, a_right=0.7)
+    """Deprecated. Use ``ssiaat.model.lines.get_line('h2o_ice')``."""
+    _deprecated("get_h2o_ice()", "ssiaat.model.lines.get_line('h2o_ice')")
+    from .lines import get_line
+    return get_line("h2o_ice")
 
-    return h2o_ice
 
 def get_pah():
-    w1 = 3.2481
-    w2 = 3.3382
-    pah_narrow = hflattop(w1, w2, a=0.7) # aromatic component
+    """Deprecated. Returns ``(pah_narrow, pah_broad)`` from the registry."""
+    _deprecated("get_pah()",
+                "ssiaat.model.lines.get_line('pah_narrow'/'pah_broad')")
+    from .lines import get_line
+    return get_line("pah_narrow"), get_line("pah_broad")
 
-    w11 = 3.32
-    w31 = 3.52 # we try to make broad component slightly narrower based on the observed spectra.
-    pah_broad = hflattop(w11, w31, a=0.9) # aliphatic component
-
-    return pah_narrow, pah_broad
-
-def get_conts(w0, w1, a=0.3):
-    w01 = 0.5 * (w0 + w1)
-    return cont_left(w0, w01, a), cont_right(w01, w1, a)
 
 def get_br_a():
-    "band = 5"
-    # center = 4.0519
-    d_shift2 = 0.012 - 0.002# somehow wavelength solutionseem to be off
-    a2 = 0.75 + 0.8# - 0.2
-    br_a = hflattop(4.0372-d_shift2, 4.0724-d_shift2, a=a2) # a adjusted to fit the bandpss
+    "band = 5. Deprecated. Use ``ssiaat.model.lines.get_line('br_a')``."
+    _deprecated("get_br_a()", "ssiaat.model.lines.get_line('br_a')")
+    from .lines import get_line
+    return get_line("br_a")
 
-    # cont_left : 3.9099 - 4.0504
-    # cont_right : 4.0504 - 4.1949
-    return br_a
-
-def get_cont_model(cw0, cw1, a=0.3):
-    cw_middle = 0.5 * (cw0 + cw1)
-    cont_models = [cont_left(cw0, cw_middle, a), cont_right(cw_middle, cw1, a)]
-    return cont_models
 
 def get_pa_b():
-
-    d_shift2 = 0.004 # 012 - 0.002# somehow wavelength solutionseem to be off
-    a2 = 0.75 + 0.8# - 0.2
-    pa_b = hflattop(1.2693-d_shift2, 1.2988-d_shift2, a=a2) # a adjusted to fit the bandpss
-
-    # cw0, cw1 = 1.132, 1.432
-    return pa_b
+    "band = 2. Deprecated. Use ``ssiaat.model.lines.get_line('pa_b')``."
+    _deprecated("get_pa_b()", "ssiaat.model.lines.get_line('pa_b')")
+    from .lines import get_line
+    return get_line("pa_b")
